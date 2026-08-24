@@ -293,6 +293,48 @@ export type Database = {
         }
         Relationships: []
       }
+      schedule_publications: {
+        Row: {
+          id: string
+          member_id: string
+          published_at: string
+          published_by: string | null
+          snapshot: Json
+          year_month: string
+        }
+        Insert: {
+          id?: string
+          member_id: string
+          published_at?: string
+          published_by?: string | null
+          snapshot: Json
+          year_month: string
+        }
+        Update: {
+          id?: string
+          member_id?: string
+          published_at?: string
+          published_by?: string | null
+          snapshot?: Json
+          year_month?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_publications_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_publications_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedules: {
         Row: {
           created_by: string | null

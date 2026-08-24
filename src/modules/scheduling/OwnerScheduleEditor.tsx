@@ -3,13 +3,16 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
 import { Legend } from './Legend'
+import { PublicationBar } from './PublicationBar'
+import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { daysInMonth, pad2, todayStr } from '@/shared/lib/date'
+import { SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
 type Profile = Tables<'profiles'>
 
-const STATUS_CYCLE: ShiftStatus[] = ['unscheduled', 'normal', 'regular_off', 'special_off']
+const BRUSH_OPTIONS: ShiftStatus[] = ['normal', 'regular_off', 'special_off', 'unscheduled']
 
 export function OwnerScheduleEditor() {
   const { session, profile } = useAuth()
@@ -18,12 +21,17 @@ export function OwnerScheduleEditor() {
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
   const [localStatus, setLocalStatus] = useState<Record<string, ShiftStatus>>({})
   const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
-  const [updaterCaption, setUpdaterCaption] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [brush, setBrush] = useState<ShiftStatus>('normal')
+  const [viewingId, setViewingId] = useState<string | 'live'>('live')
 
   const [year, month] = yearMonth.split('-').map(Number)
+  const { publications, reload: reloadPublications } = useSchedulePublications(
+    selectedMemberId || undefined,
+    yearMonth
+  )
 
   useEffect(() => {
     supabase
@@ -40,6 +48,7 @@ export function OwnerScheduleEditor() {
 
   useEffect(() => {
     if (!selectedMemberId) return
+    setViewingId('live')
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMemberId, yearMonth])
@@ -53,7 +62,7 @@ export function OwnerScheduleEditor() {
     const [{ data: scheduleRows }, { data: overrideRows }] = await Promise.all([
       supabase
         .from('schedules')
-        .select('work_date, status, updated_by')
+        .select('work_date, status')
         .eq('member_id', selectedMemberId)
         .gte('work_date', firstDay)
         .lte('work_date', lastDay),
@@ -69,39 +78,16 @@ export function OwnerScheduleEditor() {
     setOverridesMap(overrides)
 
     const statusMap: Record<string, ShiftStatus> = {}
-    const updaterIds = new Set<string>()
-    for (const row of scheduleRows ?? []) {
-      statusMap[row.work_date] = row.status
-      if (row.updated_by) updaterIds.add(row.updated_by)
-    }
+    for (const row of scheduleRows ?? []) statusMap[row.work_date] = row.status
     setLocalStatus(statusMap)
-
-    if (updaterIds.size > 0) {
-      const { data: updaters } = await supabase
-        .from('profiles')
-        .select('id, display_name')
-        .in('id', Array.from(updaterIds))
-      const names = Object.fromEntries((updaters ?? []).map((u) => [u.id, u.display_name]))
-      const captions: Record<string, string> = {}
-      for (const row of scheduleRows ?? []) {
-        if (row.updated_by) captions[row.work_date] = `由 ${names[row.updated_by] ?? '未知'} 更新`
-      }
-      setUpdaterCaption(captions)
-    } else {
-      setUpdaterCaption({})
-    }
 
     setLoading(false)
   }
 
-  const cycleStatus = (date: string) => {
+  const applyBrush = (date: string) => {
     if (overridesMap[date]) return
-    setLocalStatus((prev) => {
-      const current = prev[date] ?? 'unscheduled'
-      const idx = STATUS_CYCLE.indexOf(current)
-      const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
-      return { ...prev, [date]: next }
-    })
+    if (viewingId !== 'live') return
+    setLocalStatus((prev) => ({ ...prev, [date]: brush }))
   }
 
   const handleSave = async () => {
@@ -117,27 +103,54 @@ export function OwnerScheduleEditor() {
         created_by: session.user.id,
         updated_by: session.user.id,
       }))
-    const { error } = await supabase
+
+    const { error: upsertError } = await supabase
       .from('schedules')
       .upsert(rows, { onConflict: 'member_id,work_date' })
-    setSaving(false)
-    if (error) {
-      setMessage(`儲存失敗：${error.message}`)
+    if (upsertError) {
+      setSaving(false)
+      setMessage(`儲存失敗：${upsertError.message}`)
       return
     }
-    setMessage('已儲存並公告，該成員登入後即可在自己的排班頁看到最新結果')
-    load()
+
+    const { error: publishError } = await supabase.from('schedule_publications').insert({
+      member_id: selectedMemberId,
+      year_month: `${yearMonth}-01`,
+      published_by: session.user.id,
+      snapshot: rows.map(({ work_date, status }) => ({ work_date, status })),
+    })
+    setSaving(false)
+    if (publishError) {
+      setMessage(`已儲存班表，但公告紀錄失敗：${publishError.message}`)
+      return
+    }
+    setMessage('已儲存並公告')
+    setViewingId('live')
+    reloadPublications()
   }
 
   const selectedMember = members.find((m) => m.id === selectedMemberId)
 
+  const viewingPublication = viewingId === 'live' ? null : publications.find((p) => p.id === viewingId)
+  const displayStatus: Record<string, ShiftStatus> =
+    viewingId === 'live'
+      ? localStatus
+      : Object.fromEntries(
+          ((viewingPublication?.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [
+            e.work_date,
+            e.status,
+          ])
+        )
+
   const cells: Record<string, DayCell> = {}
-  for (const [date, status] of Object.entries(localStatus)) {
-    cells[date] = { status, caption: updaterCaption[date] }
+  for (const [date, status] of Object.entries(displayStatus)) {
+    cells[date] = { status }
   }
   for (const [date, name] of Object.entries(overridesMap)) {
     cells[date] = { status: 'unscheduled', overrideName: name }
   }
+
+  const editing = viewingId === 'live'
 
   return (
     <div>
@@ -173,7 +186,7 @@ export function OwnerScheduleEditor() {
         )}
         <button
           onClick={handleSave}
-          disabled={saving || loading}
+          disabled={saving || loading || !editing}
           className="ml-auto bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
         >
           {saving ? '儲存中…' : '儲存並公告'}
@@ -186,11 +199,42 @@ export function OwnerScheduleEditor() {
         <div>載入中…</div>
       ) : (
         <>
-          <Legend />
+          <PublicationBar
+            publications={publications}
+            viewingId={viewingId}
+            onChange={setViewingId}
+            editable
+          />
+
+          <div className="flex flex-wrap gap-2 mb-2">
+            {BRUSH_OPTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                disabled={!editing}
+                aria-pressed={brush === s}
+                onClick={() => setBrush(s)}
+                className={`px-3 py-1.5 rounded text-sm border transition disabled:opacity-40 ${
+                  brush === s
+                    ? 'bg-black text-white border-black ring-2 ring-offset-1 ring-black'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {SHIFT_STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
           <p className="text-xs text-gray-500 mb-2">
-            點擊日期可切換班別狀態：未排班 → 正常班 → 例假 → 休假 → 未排班…
+            {editing ? '先選上面的班別狀態，再點下面日期套用該狀態' : ''}
           </p>
-          <MonthCalendarGrid year={year} month={month} cells={cells} onDayClick={cycleStatus} />
+
+          <Legend />
+          <MonthCalendarGrid
+            year={year}
+            month={month}
+            cells={cells}
+            onDayClick={editing ? applyBrush : undefined}
+          />
         </>
       )}
     </div>

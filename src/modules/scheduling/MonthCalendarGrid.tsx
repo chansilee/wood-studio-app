@@ -7,7 +7,6 @@ type ShiftStatus = Enums<'shift_status'>
 export interface DayCell {
   status: ShiftStatus
   overrideName?: string
-  caption?: string
 }
 
 const STATUS_COLOR: Record<ShiftStatus, string> = {
@@ -65,9 +64,6 @@ export function MonthCalendarGrid({
                 <span className="text-xs font-medium mt-1 break-words">
                   {cell?.overrideName ?? SHIFT_STATUS_LABELS[cell?.status ?? 'unscheduled']}
                 </span>
-                {cell?.caption && (
-                  <span className="text-[10px] text-gray-500 mt-auto">{cell.caption}</span>
-                )}
               </button>
             )
           })}

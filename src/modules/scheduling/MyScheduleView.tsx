@@ -3,18 +3,27 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
 import { Legend } from './Legend'
+import { PublicationBar } from './PublicationBar'
+import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { daysInMonth, pad2, todayStr } from '@/shared/lib/date'
+import type { Enums } from '@/shared/types/database'
+
+type ShiftStatus = Enums<'shift_status'>
 
 export function MyScheduleView() {
   const { profile } = useAuth()
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
-  const [cells, setCells] = useState<Record<string, DayCell>>({})
+  const [liveStatus, setLiveStatus] = useState<Record<string, ShiftStatus>>({})
+  const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+  const [viewingId, setViewingId] = useState<string | 'live'>('live')
 
   const [year, month] = yearMonth.split('-').map(Number)
+  const { publications } = useSchedulePublications(profile?.id, yearMonth)
 
   useEffect(() => {
     if (!profile) return
+    setViewingId('live')
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id, yearMonth])
@@ -27,7 +36,7 @@ export function MyScheduleView() {
     const [{ data: scheduleRows }, { data: overrideRows }] = await Promise.all([
       supabase
         .from('schedules')
-        .select('work_date, status, updated_by')
+        .select('work_date, status')
         .eq('member_id', profile!.id)
         .gte('work_date', firstDay)
         .lte('work_date', lastDay),
@@ -38,30 +47,34 @@ export function MyScheduleView() {
         .lte('override_date', lastDay),
     ])
 
-    const updaterIds = Array.from(
-      new Set((scheduleRows ?? []).map((r) => r.updated_by).filter((id): id is string => !!id))
-    )
-    let updaterNames: Record<string, string> = {}
-    if (updaterIds.length > 0) {
-      const { data: updaters } = await supabase
-        .from('profiles')
-        .select('id, display_name')
-        .in('id', updaterIds)
-      updaterNames = Object.fromEntries((updaters ?? []).map((u) => [u.id, u.display_name]))
-    }
+    const statusMap: Record<string, ShiftStatus> = {}
+    for (const row of scheduleRows ?? []) statusMap[row.work_date] = row.status
+    setLiveStatus(statusMap)
 
-    const nextCells: Record<string, DayCell> = {}
-    for (const row of scheduleRows ?? []) {
-      nextCells[row.work_date] = {
-        status: row.status,
-        caption: row.updated_by ? `由 ${updaterNames[row.updated_by] ?? '未知'} 更新` : undefined,
-      }
-    }
-    for (const o of overrideRows ?? []) {
-      nextCells[o.override_date] = { status: 'unscheduled', overrideName: o.name }
-    }
-    setCells(nextCells)
+    const overrides: Record<string, string> = {}
+    for (const o of overrideRows ?? []) overrides[o.override_date] = o.name
+    setOverridesMap(overrides)
+
     setLoading(false)
+  }
+
+  const viewingPublication = viewingId === 'live' ? null : publications.find((p) => p.id === viewingId)
+  const displayStatus: Record<string, ShiftStatus> =
+    viewingId === 'live'
+      ? liveStatus
+      : Object.fromEntries(
+          ((viewingPublication?.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [
+            e.work_date,
+            e.status,
+          ])
+        )
+
+  const cells: Record<string, DayCell> = {}
+  for (const [date, status] of Object.entries(displayStatus)) {
+    cells[date] = { status }
+  }
+  for (const [date, name] of Object.entries(overridesMap)) {
+    cells[date] = { status: 'unscheduled', overrideName: name }
   }
 
   return (
@@ -79,6 +92,7 @@ export function MyScheduleView() {
         <div>載入中…</div>
       ) : (
         <>
+          <PublicationBar publications={publications} viewingId={viewingId} onChange={setViewingId} />
           <Legend />
           <MonthCalendarGrid year={year} month={month} cells={cells} />
         </>

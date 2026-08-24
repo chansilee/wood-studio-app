@@ -27,3 +27,15 @@ export function todayStr(): string {
   const now = new Date()
   return toDateStr(now.getFullYear(), now.getMonth() + 1, now.getDate())
 }
+
+/** Formats an ISO timestamp as 'YYYY/MM/DD HH:mm:ss' in the viewer's local time */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const mo = pad2(d.getMonth() + 1)
+  const da = pad2(d.getDate())
+  const h = pad2(d.getHours())
+  const mi = pad2(d.getMinutes())
+  const s = pad2(d.getSeconds())
+  return `${y}/${mo}/${da} ${h}:${mi}:${s}`
+}
