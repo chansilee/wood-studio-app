@@ -1,12 +1,51 @@
+import { useState } from 'react'
+import { useAuth } from '@/shared/hooks/useAuth'
+import { OwnerScheduleEditor } from './OwnerScheduleEditor'
+import { MyScheduleView } from './MyScheduleView'
+import { CalendarOverridesManager } from './CalendarOverridesManager'
+
+type Tab = 'calendar' | 'overrides'
+
 export function SchedulingPage() {
+  const { profile } = useAuth()
+  const isOwner = profile?.role === 'owner'
+  const [tab, setTab] = useState<Tab>('calendar')
+
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-xl font-semibold mb-2">排班系統</h1>
-      <p className="text-gray-600">
-        TODO：月曆排班（負責人可對自己/其他成員排班，其他人僅能看自己）、
-        國定假日管理、特殊假管理（天災假/選舉假遮罩）。
-        資料表 <code>schedules</code> / <code>calendar_overrides</code> 已建立，RLS 已就緒，可獨立開 task 實作 UI。
-      </p>
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h1 className="text-xl font-semibold">排班系統</h1>
+        {isOwner && (
+          <div className="flex gap-1">
+            <button
+              onClick={() => setTab('calendar')}
+              className={`px-3 py-1.5 rounded text-sm ${
+                tab === 'calendar' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              排班月曆
+            </button>
+            <button
+              onClick={() => setTab('overrides')}
+              className={`px-3 py-1.5 rounded text-sm ${
+                tab === 'overrides' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              國定假日 / 特殊假管理
+            </button>
+          </div>
+        )}
+      </div>
+
+      {tab === 'calendar' ? (
+        isOwner ? (
+          <OwnerScheduleEditor />
+        ) : (
+          <MyScheduleView />
+        )
+      ) : (
+        <CalendarOverridesManager />
+      )}
     </div>
   )
 }
