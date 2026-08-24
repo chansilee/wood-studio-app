@@ -3,8 +3,10 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { ClockInOut } from './ClockInOut'
 import { TodayPunches } from './TodayPunches'
+import { HistoricalPunches } from './HistoricalPunches'
 import { AttendanceHistory } from './AttendanceHistory'
 import { AttendanceSettings } from './AttendanceSettings'
+import { todayStr } from '@/shared/lib/date'
 import type { Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -18,6 +20,7 @@ export function AttendancePage() {
   const [members, setMembers] = useState<Profile[]>([])
   const [selectedMemberId, setSelectedMemberId] = useState<string>('')
   const [allowDeleteRecords, setAllowDeleteRecords] = useState(false)
+  const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
 
   useEffect(() => {
     if (!isOwner || !profile) return
@@ -45,6 +48,9 @@ export function AttendancePage() {
   const viewingMemberId = isOwner ? selectedMemberId : profile?.id ?? ''
   const viewingMember = isOwner ? members.find((m) => m.id === viewingMemberId) : profile
   const isViewingSelf = viewingMemberId === profile?.id
+  const canDelete = isOwner && allowDeleteRecords
+
+  const bump = () => setRefreshKey((k) => k + 1)
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -74,36 +80,54 @@ export function AttendancePage() {
 
       {tab === 'clock' ? (
         <>
-          {isOwner && (
-            <div className="mb-4">
-              <label className="block text-xs text-gray-600 mb-1">成員</label>
-              <select
-                value={selectedMemberId}
-                onChange={(e) => setSelectedMemberId(e.target.value)}
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            {isOwner && (
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">成員</label>
+                <select
+                  value={selectedMemberId}
+                  onChange={(e) => setSelectedMemberId(e.target.value)}
+                  className="border rounded px-2 py-1"
+                >
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.display_name}
+                      {m.id === profile?.id ? '（我）' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">月份</label>
+              <input
+                type="month"
+                value={yearMonth}
+                onChange={(e) => setYearMonth(e.target.value)}
                 className="border rounded px-2 py-1"
-              >
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name}
-                    {m.id === profile?.id ? '（我）' : ''}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
-          )}
+          </div>
 
-          {isViewingSelf && <ClockInOut onRecorded={() => setRefreshKey((k) => k + 1)} />}
+          {isViewingSelf && <ClockInOut onRecorded={bump} />}
 
           {viewingMemberId && viewingMember && (
             <>
               <TodayPunches
                 memberId={viewingMemberId}
                 memberName={viewingMember.display_name}
-                canDelete={isOwner && allowDeleteRecords}
+                canDelete={canDelete}
                 refreshKey={refreshKey}
-                onDeleted={() => setRefreshKey((k) => k + 1)}
+                onDeleted={bump}
               />
-              <AttendanceHistory memberId={viewingMemberId} refreshKey={refreshKey} />
+              <HistoricalPunches
+                memberId={viewingMemberId}
+                yearMonth={yearMonth}
+                canDelete={canDelete}
+                refreshKey={refreshKey}
+                onChanged={bump}
+              />
+              <AttendanceHistory memberId={viewingMemberId} yearMonth={yearMonth} refreshKey={refreshKey} />
             </>
           )}
         </>

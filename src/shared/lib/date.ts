@@ -29,6 +29,12 @@ export function nextDateStr(dateStr: string): string {
   return toDateStr(date.getFullYear(), date.getMonth() + 1, date.getDate())
 }
 
+export function prevDateStr(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d - 1)
+  return toDateStr(date.getFullYear(), date.getMonth() + 1, date.getDate())
+}
+
 export function todayStr(): string {
   const now = new Date()
   return toDateStr(now.getFullYear(), now.getMonth() + 1, now.getDate())

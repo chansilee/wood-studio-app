@@ -14,42 +14,61 @@ export type Database = {
     Tables: {
       attendance_events: {
         Row: {
+          approval_status: Database["public"]["Enums"]["attendance_approval_status"]
           created_at: string
           distance_m: number | null
           event_type: Database["public"]["Enums"]["attendance_event_type"]
           id: string
-          is_within_geofence: boolean
+          is_backfill: boolean
+          is_within_geofence: boolean | null
           lat: number
           lng: number
           member_id: string
           occurred_at: string
+          reviewed_at: string | null
+          reviewed_by: string | null
         }
         Insert: {
+          approval_status?: Database["public"]["Enums"]["attendance_approval_status"]
           created_at?: string
           distance_m?: number | null
           event_type: Database["public"]["Enums"]["attendance_event_type"]
           id?: string
-          is_within_geofence?: boolean
+          is_backfill?: boolean
+          is_within_geofence?: boolean | null
           lat: number
           lng: number
           member_id: string
           occurred_at?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Update: {
+          approval_status?: Database["public"]["Enums"]["attendance_approval_status"]
           created_at?: string
           distance_m?: number | null
           event_type?: Database["public"]["Enums"]["attendance_event_type"]
           id?: string
-          is_within_geofence?: boolean
+          is_backfill?: boolean
+          is_within_geofence?: boolean | null
           lat?: number
           lng?: number
           member_id?: string
           occurred_at?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "attendance_events_member_id_fkey"
             columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_events_reviewed_by_fkey"
+            columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -433,15 +452,12 @@ export type Database = {
       }
     }
     Views: {
-      attendance_summary: {
+      attendance_daily: {
         Row: {
-          attendance_status: string | null
           clock_in_at: string | null
           clock_out_at: string | null
-          default_daily_hours: number | null
           member_id: string | null
           work_date: string | null
-          worked_hours: number | null
         }
         Relationships: [
           {
@@ -453,12 +469,15 @@ export type Database = {
           },
         ]
       }
-      attendance_daily: {
+      attendance_summary: {
         Row: {
+          attendance_status: string | null
           clock_in_at: string | null
           clock_out_at: string | null
+          default_daily_hours: number | null
           member_id: string | null
           work_date: string | null
+          worked_hours: number | null
         }
         Relationships: [
           {
@@ -480,6 +499,7 @@ export type Database = {
       is_owner: { Args: Record<PropertyKey, never>; Returns: boolean }
     }
     Enums: {
+      attendance_approval_status: "pending" | "approved" | "rejected"
       attendance_event_type: "clock_in" | "clock_out"
       calendar_override_type:
         | "national_holiday"
@@ -608,6 +628,7 @@ export type Enums<
 export const Constants = {
   public: {
     Enums: {
+      attendance_approval_status: ["pending", "approved", "rejected"],
       attendance_event_type: ["clock_in", "clock_out"],
       calendar_override_type: [
         "national_holiday",

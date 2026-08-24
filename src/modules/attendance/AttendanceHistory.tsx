@@ -13,12 +13,13 @@ function formatTime(iso: string | null): string {
 
 export function AttendanceHistory({
   memberId,
+  yearMonth,
   refreshKey,
 }: {
   memberId: string
+  yearMonth: string
   refreshKey: number
 }) {
-  const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
   const [rows, setRows] = useState<SummaryRow[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -48,15 +49,7 @@ export function AttendanceHistory({
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-3">
-        <label className="text-sm text-gray-600">月份</label>
-        <input
-          type="month"
-          value={yearMonth}
-          onChange={(e) => setYearMonth(e.target.value)}
-          className="border rounded px-2 py-1"
-        />
-      </div>
+      <h2 className="font-medium mb-2">當月結算：</h2>
       <p className="text-xs text-gray-500 mb-2">紀錄於隔天結算，今日打卡尚未顯示於下表</p>
       {loading ? (
         <div>載入中…</div>
