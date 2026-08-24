@@ -29,7 +29,7 @@ export type Database = {
           distance_m?: number | null
           event_type: Database["public"]["Enums"]["attendance_event_type"]
           id?: string
-          is_within_geofence: boolean
+          is_within_geofence?: boolean
           lat: number
           lng: number
           member_id: string
@@ -154,6 +154,7 @@ export type Database = {
           company_lng: number | null
           dinner_end: string | null
           dinner_start: string | null
+          geofence_disabled: boolean
           geofence_radius_m: number
           id: number
           lunch_end: string | null
@@ -165,6 +166,7 @@ export type Database = {
           company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
+          geofence_disabled?: boolean
           geofence_radius_m?: number
           id?: number
           lunch_end?: string | null
@@ -176,6 +178,7 @@ export type Database = {
           company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
+          geofence_disabled?: boolean
           geofence_radius_m?: number
           id?: number
           lunch_end?: string | null
@@ -427,6 +430,26 @@ export type Database = {
       }
     }
     Views: {
+      attendance_summary: {
+        Row: {
+          attendance_status: string | null
+          clock_in_at: string | null
+          clock_out_at: string | null
+          default_daily_hours: number | null
+          member_id: string | null
+          work_date: string | null
+          worked_hours: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_events_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance_daily: {
         Row: {
           clock_in_at: string | null

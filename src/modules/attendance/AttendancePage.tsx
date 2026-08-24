@@ -1,12 +1,51 @@
+import { useState } from 'react'
+import { useAuth } from '@/shared/hooks/useAuth'
+import { ClockInOut } from './ClockInOut'
+import { AttendanceHistory } from './AttendanceHistory'
+import { AttendanceSettings } from './AttendanceSettings'
+
+type Tab = 'clock' | 'settings'
+
 export function AttendancePage() {
+  const { profile } = useAuth()
+  const isOwner = profile?.role === 'owner'
+  const [tab, setTab] = useState<Tab>('clock')
+  const [refreshKey, setRefreshKey] = useState(0)
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-xl font-semibold mb-2">打卡系統</h1>
-      <p className="text-gray-600">
-        TODO：地理圍欄打卡（上/下班，下班取最後一次）、午休/晚餐時段設定、每日打卡 history 與出勤狀態判斷。
-        資料表 <code>attendance_events</code>、view <code>attendance_daily</code>、
-        <code>org_settings</code>（午休/晚餐/圍欄半徑）已建立，可獨立開 task 實作 UI + geofence 驗證邏輯。
-      </p>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h1 className="text-xl font-semibold">打卡系統</h1>
+        {isOwner && (
+          <div className="flex gap-1">
+            <button
+              onClick={() => setTab('clock')}
+              className={`px-3 py-1.5 rounded text-sm ${
+                tab === 'clock' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              打卡
+            </button>
+            <button
+              onClick={() => setTab('settings')}
+              className={`px-3 py-1.5 rounded text-sm ${
+                tab === 'settings' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              設定
+            </button>
+          </div>
+        )}
+      </div>
+
+      {tab === 'clock' ? (
+        <>
+          <ClockInOut onRecorded={() => setRefreshKey((k) => k + 1)} />
+          <AttendanceHistory refreshKey={refreshKey} />
+        </>
+      ) : (
+        <AttendanceSettings />
+      )}
     </div>
   )
 }
