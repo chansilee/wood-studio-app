@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
-import { useAuth } from '@/shared/hooks/useAuth'
 import { daysInMonth, pad2, todayStr } from '@/shared/lib/date'
 import type { Tables } from '@/shared/types/database'
 
@@ -12,8 +11,13 @@ function formatTime(iso: string | null): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export function AttendanceHistory({ refreshKey }: { refreshKey: number }) {
-  const { profile } = useAuth()
+export function AttendanceHistory({
+  memberId,
+  refreshKey,
+}: {
+  memberId: string
+  refreshKey: number
+}) {
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
   const [rows, setRows] = useState<SummaryRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,10 +25,9 @@ export function AttendanceHistory({ refreshKey }: { refreshKey: number }) {
   const [year, month] = yearMonth.split('-').map(Number)
 
   useEffect(() => {
-    if (!profile) return
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id, yearMonth, refreshKey])
+  }, [memberId, yearMonth, refreshKey])
 
   const load = async () => {
     setLoading(true)
@@ -34,7 +37,7 @@ export function AttendanceHistory({ refreshKey }: { refreshKey: number }) {
     const { data } = await supabase
       .from('attendance_summary')
       .select('*')
-      .eq('member_id', profile!.id)
+      .eq('member_id', memberId)
       .gte('work_date', firstDay)
       .lte('work_date', lastDay)
       .lt('work_date', today)

@@ -48,6 +48,7 @@ export function AttendanceSettings() {
         company_lng: settings.company_lng,
         geofence_radius_m: settings.geofence_radius_m,
         geofence_disabled: settings.geofence_disabled,
+        allow_delete_records: settings.allow_delete_records,
         lunch_start: settings.lunch_start,
         lunch_end: settings.lunch_end,
         dinner_start: settings.dinner_start,
@@ -123,6 +124,15 @@ export function AttendanceSettings() {
             onChange={(e) => setSettings({ ...settings, geofence_disabled: e.target.checked })}
           />
           暫時關閉地理圍欄（debug / 公出用，打卡時不檢查位置）
+        </label>
+
+        <label className="flex items-center gap-2 mt-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.allow_delete_records}
+            onChange={(e) => setSettings({ ...settings, allow_delete_records: e.target.checked })}
+          />
+          啟用刪除紀錄功能（打勾後，可在「本日打卡紀錄」刪除當天的打卡；已結算的過往紀錄一律不可刪改）
         </label>
       </section>
 

@@ -150,6 +150,7 @@ export type Database = {
       }
       org_settings: {
         Row: {
+          allow_delete_records: boolean
           company_lat: number | null
           company_lng: number | null
           dinner_end: string | null
@@ -162,6 +163,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          allow_delete_records?: boolean
           company_lat?: number | null
           company_lng?: number | null
           dinner_end?: string | null
@@ -174,6 +176,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          allow_delete_records?: boolean
           company_lat?: number | null
           company_lng?: number | null
           dinner_end?: string | null
