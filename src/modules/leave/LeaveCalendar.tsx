@@ -1,0 +1,271 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '@/shared/lib/supabase'
+import { useAuth } from '@/shared/hooks/useAuth'
+import { useSchedulePublications, type PublicationSnapshotEntry } from '@/modules/scheduling/usePublications'
+import { daysInMonth, getMonthGrid, pad2, todayStr } from '@/shared/lib/date'
+import { LeaveDetailPanel } from './LeaveDetailPanel'
+import type { Enums, Tables } from '@/shared/types/database'
+
+type Profile = Tables<'profiles'>
+type LeaveType = Tables<'leave_types'>
+type LeaveRequestRow = Tables<'leave_requests'> & {
+  leave_type_name?: string
+  reviewer_name?: string
+}
+
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六']
+
+export function LeaveCalendar() {
+  const { profile } = useAuth()
+  const isOwner = profile?.role === 'owner'
+  const [members, setMembers] = useState<Profile[]>([])
+  const [selectedMemberId, setSelectedMemberId] = useState('')
+  const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
+  const [attendanceMap, setAttendanceMap] = useState<
+    Record<string, { status: string; hours: number | null }>
+  >({})
+  const [leaveMap, setLeaveMap] = useState<Record<string, LeaveRequestRow>>({})
+  const [defaultDailyHours, setDefaultDailyHours] = useState(6)
+  const [loading, setLoading] = useState(true)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const [year, month] = yearMonth.split('-').map(Number)
+  const memberId = isOwner ? selectedMemberId : profile?.id ?? ''
+  const { publications } = useSchedulePublications(memberId || undefined, yearMonth)
+  const latestSnapshot = publications[0]
+
+  useEffect(() => {
+    if (!isOwner || !profile) return
+    supabase
+      .from('profiles')
+      .select('*')
+      .in('role', ['owner', 'staff', 'apprentice'])
+      .order('display_name')
+      .then(({ data }) => {
+        setMembers(data ?? [])
+        setSelectedMemberId((prev) => prev || profile.id)
+      })
+  }, [isOwner, profile])
+
+  useEffect(() => {
+    supabase
+      .from('leave_types')
+      .select('*')
+      .order('created_at')
+      .then(({ data }) => setLeaveTypes(data ?? []))
+  }, [])
+
+  useEffect(() => {
+    if (!memberId) return
+    supabase
+      .from('profiles')
+      .select('default_daily_hours')
+      .eq('id', memberId)
+      .single()
+      .then(({ data }) => setDefaultDailyHours(Number(data?.default_daily_hours ?? 6)))
+  }, [memberId])
+
+  useEffect(() => {
+    if (!memberId) return
+    load()
+    setSelectedDate(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberId, yearMonth, refreshKey])
+
+  const load = async () => {
+    setLoading(true)
+    const firstDay = `${year}-${pad2(month)}-01`
+    const lastDay = `${year}-${pad2(month)}-${pad2(daysInMonth(year, month))}`
+
+    const [{ data: attRows }, { data: leaveRows }] = await Promise.all([
+      supabase
+        .from('attendance_summary')
+        .select('work_date, attendance_status, worked_hours')
+        .eq('member_id', memberId)
+        .gte('work_date', firstDay)
+        .lte('work_date', lastDay),
+      supabase
+        .from('leave_requests')
+        .select('*, leave_types(name)')
+        .eq('member_id', memberId)
+        .gte('leave_date', firstDay)
+        .lte('leave_date', lastDay),
+    ])
+
+    const aMap: Record<string, { status: string; hours: number | null }> = {}
+    for (const r of attRows ?? []) {
+      if (r.work_date) aMap[r.work_date] = { status: r.attendance_status ?? 'abnormal', hours: r.worked_hours }
+    }
+    setAttendanceMap(aMap)
+
+    const rows = (leaveRows ?? []) as Array<
+      Tables<'leave_requests'> & { leave_types: { name: string } | null }
+    >
+    const reviewerIds = Array.from(
+      new Set(rows.map((r) => r.reviewed_by).filter((id): id is string => !!id))
+    )
+    let names: Record<string, string> = {}
+    if (reviewerIds.length > 0) {
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, display_name')
+        .in('id', reviewerIds)
+      names = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+    }
+
+    const lMap: Record<string, LeaveRequestRow> = {}
+    for (const r of rows) {
+      lMap[r.leave_date] = {
+        ...r,
+        leave_type_name: r.leave_types?.name,
+        reviewer_name: r.reviewed_by ? names[r.reviewed_by] : undefined,
+      }
+    }
+    setLeaveMap(lMap)
+    setLoading(false)
+  }
+
+  const scheduleMap = useMemo(() => {
+    const map: Record<string, Enums<'shift_status'>> = {}
+    const snapshot = (latestSnapshot?.snapshot as PublicationSnapshotEntry[] | undefined) ?? []
+    for (const e of snapshot) map[e.work_date] = e.status
+    return map
+  }, [latestSnapshot])
+
+  const today = todayStr()
+  const weeks = getMonthGrid(year, month)
+  const bump = () => setRefreshKey((k) => k + 1)
+
+  const selectedMember = isOwner ? members.find((m) => m.id === memberId) : profile
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        {isOwner && (
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">成員</label>
+            <select
+              value={selectedMemberId}
+              onChange={(e) => setSelectedMemberId(e.target.value)}
+              className="border rounded px-2 py-1"
+            >
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.display_name}
+                  {m.id === profile?.id ? '（我）' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div>
+          <label className="block text-xs text-gray-600 mb-1">月份</label>
+          <input
+            type="month"
+            value={yearMonth}
+            onChange={(e) => setYearMonth(e.target.value)}
+            className="border rounded px-2 py-1"
+          />
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-500 mb-3">
+        月曆依「最新公告」的排班為準；只有正常班且出勤異常的日期可以點選申報假別。
+      </p>
+
+      {selectedDate && selectedMember && (
+        <LeaveDetailPanel
+          date={selectedDate}
+          memberId={memberId}
+          isOwner={isOwner}
+          canDeclare={memberId === profile?.id && !leaveMap[selectedDate]}
+          leaveRequest={leaveMap[selectedDate]}
+          rawStatus={(attendanceMap[selectedDate]?.status as 'normal' | 'abnormal') ?? 'abnormal'}
+          rawHours={attendanceMap[selectedDate]?.hours ?? null}
+          defaultDailyHours={defaultDailyHours}
+          leaveTypes={leaveTypes}
+          onChanged={() => {
+            bump()
+          }}
+          onClose={() => setSelectedDate(null)}
+        />
+      )}
+
+      {loading ? (
+        <div>載入中…</div>
+      ) : (
+        <div className="border rounded overflow-hidden">
+          <div className="grid grid-cols-7 bg-gray-50 text-xs text-gray-500">
+            {WEEKDAY_LABELS.map((d) => (
+              <div key={d} className="p-2 text-center border-b">
+                {d}
+              </div>
+            ))}
+          </div>
+          {weeks.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7">
+              {week.map((date, di) => {
+                if (!date) return <div key={di} className="border p-2 h-20 bg-gray-50" />
+                const day = Number(date.slice(-2))
+                const shiftStatus = scheduleMap[date] ?? 'unscheduled'
+
+                if (shiftStatus !== 'normal') {
+                  return (
+                    <div key={di} className="border p-1 h-20 text-xs text-gray-300">
+                      {day}
+                    </div>
+                  )
+                }
+
+                const isPast = date < today
+                const leaveReq = leaveMap[date]
+                const rawStatus = attendanceMap[date]?.status ?? 'abnormal'
+
+                let label = ''
+                let colorClass = 'bg-white'
+                let clickable = false
+
+                if (!isPast) {
+                  colorClass = 'bg-white text-gray-300'
+                } else if (leaveReq) {
+                  clickable = true
+                  if (leaveReq.status === 'pending') {
+                    label = '審核中'
+                    colorClass = 'bg-yellow-50 text-yellow-800'
+                  } else if (leaveReq.status === 'approved') {
+                    label = leaveReq.leave_type_name ?? '已核准'
+                    colorClass = 'bg-blue-50 text-blue-800'
+                  } else {
+                    label = rawStatus === 'normal' ? '正常出勤' : '異常出勤'
+                    colorClass = rawStatus === 'normal' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                  }
+                } else {
+                  label = rawStatus === 'normal' ? '正常出勤' : '異常出勤'
+                  colorClass = rawStatus === 'normal' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                  clickable = rawStatus === 'abnormal'
+                }
+
+                return (
+                  <button
+                    key={di}
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => setSelectedDate(date)}
+                    className={`border p-1 h-20 text-left flex flex-col ${colorClass} ${
+                      clickable ? 'cursor-pointer hover:brightness-95' : 'cursor-default'
+                    }`}
+                  >
+                    <span className="text-xs text-gray-500">{day}</span>
+                    {label && <span className="text-[11px] font-medium mt-1 break-words">{label}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

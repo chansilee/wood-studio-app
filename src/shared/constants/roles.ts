@@ -16,15 +16,6 @@ export const SHIFT_STATUS_LABELS: Record<Enums<'shift_status'>, string> = {
   special_off: '休假',
 }
 
-export const LEAVE_TYPE_LABELS: Record<Enums<'leave_type'>, string> = {
-  personal: '事假',
-  sick: '病假',
-  marriage: '婚假',
-  bereavement: '喪假',
-  official: '公出',
-  absence: '曠職',
-}
-
 export const CALENDAR_OVERRIDE_LABELS: Record<Enums<'calendar_override_type'>, string> = {
   national_holiday: '國定假日',
   disaster_leave: '天災假',
@@ -35,4 +26,15 @@ export const CALENDAR_OVERRIDE_LABELS: Record<Enums<'calendar_override_type'>, s
 export const WORK_LOG_TYPE_LABELS: Record<Enums<'work_log_type'>, string> = {
   production: '製作',
   learning: '學習',
+}
+
+export const LEAVE_STATUS_LABELS: Record<Enums<'leave_status'>, string> = {
+  pending: '審核中',
+  approved: '已同意',
+  rejected: '不同意',
+}
+
+export const LEAVE_DURATION_TYPE_LABELS: Record<Enums<'leave_duration_type'>, string> = {
+  full_day: '全天',
+  partial: '部分時數',
 }

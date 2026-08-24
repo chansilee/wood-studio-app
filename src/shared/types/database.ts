@@ -117,7 +117,7 @@ export type Database = {
           hours: number | null
           id: string
           leave_date: string
-          leave_type: Database["public"]["Enums"]["leave_type"]
+          leave_type_id: string
           member_id: string
           reason: string | null
           reviewed_at: string | null
@@ -130,7 +130,7 @@ export type Database = {
           hours?: number | null
           id?: string
           leave_date: string
-          leave_type: Database["public"]["Enums"]["leave_type"]
+          leave_type_id: string
           member_id: string
           reason?: string | null
           reviewed_at?: string | null
@@ -143,7 +143,7 @@ export type Database = {
           hours?: number | null
           id?: string
           leave_date?: string
-          leave_type?: Database["public"]["Enums"]["leave_type"]
+          leave_type_id?: string
           member_id?: string
           reason?: string | null
           reviewed_at?: string | null
@@ -151,6 +151,13 @@ export type Database = {
           status?: Database["public"]["Enums"]["leave_status"]
         }
         Relationships: [
+          {
+            foreignKeyName: "leave_requests_leave_type_id_fkey"
+            columns: ["leave_type_id"]
+            isOneToOne: false
+            referencedRelation: "leave_types"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leave_requests_member_id_fkey"
             columns: ["member_id"]
@@ -161,6 +168,35 @@ export type Database = {
           {
             foreignKeyName: "leave_requests_reviewed_by_fkey"
             columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leave_types: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_types_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -508,13 +544,6 @@ export type Database = {
         | "other"
       leave_duration_type: "full_day" | "partial"
       leave_status: "pending" | "approved" | "rejected"
-      leave_type:
-        | "personal"
-        | "sick"
-        | "marriage"
-        | "bereavement"
-        | "official"
-        | "absence"
       member_role: "owner" | "staff" | "apprentice" | "guest"
       shift_status: "normal" | "unscheduled" | "regular_off" | "special_off"
       work_log_type: "production" | "learning"
@@ -638,14 +667,6 @@ export const Constants = {
       ],
       leave_duration_type: ["full_day", "partial"],
       leave_status: ["pending", "approved", "rejected"],
-      leave_type: [
-        "personal",
-        "sick",
-        "marriage",
-        "bereavement",
-        "official",
-        "absence",
-      ],
       member_role: ["owner", "staff", "apprentice", "guest"],
       shift_status: ["normal", "unscheduled", "regular_off", "special_off"],
       work_log_type: ["production", "learning"],
