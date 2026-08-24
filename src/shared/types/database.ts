@@ -1,0 +1,565 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  __InternalSupabase: {
+    PostgrestVersion: "14.15"
+  }
+  public: {
+    Tables: {
+      attendance_events: {
+        Row: {
+          created_at: string
+          distance_m: number | null
+          event_type: Database["public"]["Enums"]["attendance_event_type"]
+          id: string
+          is_within_geofence: boolean
+          lat: number
+          lng: number
+          member_id: string
+          occurred_at: string
+        }
+        Insert: {
+          created_at?: string
+          distance_m?: number | null
+          event_type: Database["public"]["Enums"]["attendance_event_type"]
+          id?: string
+          is_within_geofence: boolean
+          lat: number
+          lng: number
+          member_id: string
+          occurred_at?: string
+        }
+        Update: {
+          created_at?: string
+          distance_m?: number | null
+          event_type?: Database["public"]["Enums"]["attendance_event_type"]
+          id?: string
+          is_within_geofence?: boolean
+          lat?: number
+          lng?: number
+          member_id?: string
+          occurred_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_events_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          override_date: string
+          type: Database["public"]["Enums"]["calendar_override_type"]
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          override_date: string
+          type: Database["public"]["Enums"]["calendar_override_type"]
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          override_date?: string
+          type?: Database["public"]["Enums"]["calendar_override_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_overrides_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leave_requests: {
+        Row: {
+          created_at: string
+          duration_type: Database["public"]["Enums"]["leave_duration_type"]
+          hours: number | null
+          id: string
+          leave_date: string
+          leave_type: Database["public"]["Enums"]["leave_type"]
+          member_id: string
+          reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: Database["public"]["Enums"]["leave_status"]
+        }
+        Insert: {
+          created_at?: string
+          duration_type?: Database["public"]["Enums"]["leave_duration_type"]
+          hours?: number | null
+          id?: string
+          leave_date: string
+          leave_type: Database["public"]["Enums"]["leave_type"]
+          member_id: string
+          reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["leave_status"]
+        }
+        Update: {
+          created_at?: string
+          duration_type?: Database["public"]["Enums"]["leave_duration_type"]
+          hours?: number | null
+          id?: string
+          leave_date?: string
+          leave_type?: Database["public"]["Enums"]["leave_type"]
+          member_id?: string
+          reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["leave_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_requests_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_settings: {
+        Row: {
+          company_lat: number | null
+          company_lng: number | null
+          dinner_end: string | null
+          dinner_start: string | null
+          geofence_radius_m: number
+          id: number
+          lunch_end: string | null
+          lunch_start: string | null
+          updated_at: string
+        }
+        Insert: {
+          company_lat?: number | null
+          company_lng?: number | null
+          dinner_end?: string | null
+          dinner_start?: string | null
+          geofence_radius_m?: number
+          id?: number
+          lunch_end?: string | null
+          lunch_start?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company_lat?: number | null
+          company_lng?: number | null
+          dinner_end?: string | null
+          dinner_start?: string | null
+          geofence_radius_m?: number
+          id?: number
+          lunch_end?: string | null
+          lunch_start?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      product_images: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          r2_key: string
+          r2_url: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          r2_key: string
+          r2_url: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          r2_key?: string
+          r2_url?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          pose: string | null
+          process_steps: string | null
+          series: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          pose?: string | null
+          process_steps?: string | null
+          series?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          pose?: string | null
+          process_steps?: string | null
+          series?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          default_daily_hours: number
+          display_name: string
+          email: string
+          id: string
+          role: Database["public"]["Enums"]["member_role"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_daily_hours?: number
+          display_name?: string
+          email: string
+          id: string
+          role?: Database["public"]["Enums"]["member_role"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_daily_hours?: number
+          display_name?: string
+          email?: string
+          id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      schedules: {
+        Row: {
+          created_by: string | null
+          id: string
+          member_id: string
+          note: string | null
+          status: Database["public"]["Enums"]["shift_status"]
+          updated_at: string
+          updated_by: string | null
+          work_date: string
+        }
+        Insert: {
+          created_by?: string | null
+          id?: string
+          member_id: string
+          note?: string | null
+          status?: Database["public"]["Enums"]["shift_status"]
+          updated_at?: string
+          updated_by?: string | null
+          work_date: string
+        }
+        Update: {
+          created_by?: string | null
+          id?: string
+          member_id?: string
+          note?: string | null
+          status?: Database["public"]["Enums"]["shift_status"]
+          updated_at?: string
+          updated_by?: string | null
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedules_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedules_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_logs: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          log_date: string
+          log_type: Database["public"]["Enums"]["work_log_type"]
+          member_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          log_date: string
+          log_type: Database["public"]["Enums"]["work_log_type"]
+          member_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          log_date?: string
+          log_type?: Database["public"]["Enums"]["work_log_type"]
+          member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_logs_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      attendance_daily: {
+        Row: {
+          clock_in_at: string | null
+          clock_out_at: string | null
+          member_id: string | null
+          work_date: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_events_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Functions: {
+      current_role_name: {
+        Args: Record<PropertyKey, never>
+        Returns: Database["public"]["Enums"]["member_role"]
+      }
+      has_any_owner: { Args: Record<PropertyKey, never>; Returns: boolean }
+      is_owner: { Args: Record<PropertyKey, never>; Returns: boolean }
+    }
+    Enums: {
+      attendance_event_type: "clock_in" | "clock_out"
+      calendar_override_type:
+        | "national_holiday"
+        | "disaster_leave"
+        | "election_leave"
+        | "other"
+      leave_duration_type: "full_day" | "partial"
+      leave_status: "pending" | "approved" | "rejected"
+      leave_type:
+        | "personal"
+        | "sick"
+        | "marriage"
+        | "bereavement"
+        | "official"
+        | "absence"
+      member_role: "owner" | "staff" | "apprentice" | "guest"
+      shift_status: "normal" | "unscheduled" | "regular_off" | "special_off"
+      work_log_type: "production" | "learning"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals["public"]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      attendance_event_type: ["clock_in", "clock_out"],
+      calendar_override_type: [
+        "national_holiday",
+        "disaster_leave",
+        "election_leave",
+        "other",
+      ],
+      leave_duration_type: ["full_day", "partial"],
+      leave_status: ["pending", "approved", "rejected"],
+      leave_type: [
+        "personal",
+        "sick",
+        "marriage",
+        "bereavement",
+        "official",
+        "absence",
+      ],
+      member_role: ["owner", "staff", "apprentice", "guest"],
+      shift_status: ["normal", "unscheduled", "regular_off", "special_off"],
+      work_log_type: ["production", "learning"],
+    },
+  },
+} as const
