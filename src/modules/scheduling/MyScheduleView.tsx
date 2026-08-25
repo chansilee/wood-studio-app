@@ -79,6 +79,7 @@ export function MyScheduleView() {
     cells[date] = { status: 'unscheduled', overrideName: name }
   }
 
+  const showWeekStart = !!profile?.hire_date && !!profile?.weekly_rest_check_enabled
   const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
 
   return (
@@ -102,9 +103,9 @@ export function MyScheduleView() {
             year={year}
             month={month}
             cells={cells}
-            weekStartWeekday={weekStartWeekday}
+            weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
           />
-          {profile?.weekly_rest_check_enabled && (
+          {showWeekStart && (
             <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
               {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
             </p>

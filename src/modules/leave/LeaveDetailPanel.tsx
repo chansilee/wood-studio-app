@@ -181,7 +181,7 @@ export function LeaveDetailPanel({
                 </button>
               </>
             )}
-            {isOwner && (
+            {(isOwner || memberId === profile?.id) && (
               <button
                 onClick={remove}
                 disabled={acting}

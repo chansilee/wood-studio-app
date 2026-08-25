@@ -159,6 +159,7 @@ export function OwnerScheduleEditor() {
   }
 
   const editing = viewingId === 'live'
+  const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled
   const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
 
   return (
@@ -244,32 +245,34 @@ export function OwnerScheduleEditor() {
             month={month}
             cells={cells}
             onDayClick={editing ? applyBrush : undefined}
-            weekStartWeekday={weekStartWeekday}
+            weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
             minDate={selectedMember?.hire_date}
           />
 
-          <div className="flex items-center gap-2 mt-3 text-sm">
-            <span className="text-gray-600">切換周起始：{WEEKDAY_NAMES[weekStartWeekday]}</span>
-            <button
-              onClick={() => shiftWeekStart(-1, session?.user.id)}
-              disabled={!editing}
-              className="border rounded px-2 py-0.5 disabled:opacity-40"
-            >
-              &lt;
-            </button>
-            <button
-              onClick={() => shiftWeekStart(1, session?.user.id)}
-              disabled={!editing}
-              className="border rounded px-2 py-0.5 disabled:opacity-40"
-            >
-              &gt;
-            </button>
-          </div>
+          {showWeekStart && (
+            <>
+              <div className="flex items-center gap-2 mt-3 text-sm">
+                <span className="text-gray-600">切換周起始：{WEEKDAY_NAMES[weekStartWeekday]}</span>
+                <button
+                  onClick={() => shiftWeekStart(-1, session?.user.id)}
+                  disabled={!editing}
+                  className="border rounded px-2 py-0.5 disabled:opacity-40"
+                >
+                  &lt;
+                </button>
+                <button
+                  onClick={() => shiftWeekStart(1, session?.user.id)}
+                  disabled={!editing}
+                  className="border rounded px-2 py-0.5 disabled:opacity-40"
+                >
+                  &gt;
+                </button>
+              </div>
 
-          {selectedMember?.weekly_rest_check_enabled && (
-            <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
-              {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
-            </p>
+              <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
+                {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
+              </p>
+            </>
           )}
         </>
       )}
