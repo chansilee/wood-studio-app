@@ -3,6 +3,7 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { formatDateTime } from '@/shared/lib/date'
 import { LEAVE_DURATION_TYPE_LABELS } from '@/shared/constants/roles'
+import { computeLeaveDisplay, formatHours } from './leaveDisplay'
 import type { Enums, Tables, TablesInsert } from '@/shared/types/database'
 
 type LeaveType = Tables<'leave_types'>
@@ -115,7 +116,12 @@ export function LeaveDetailPanel({
       {leaveRequest ? (
         <div className="space-y-2 text-sm">
           <p className="text-gray-600">
-            原：正常班 {rawStatus === 'abnormal' ? <span className="text-red-600">＜出勤異常＞</span> : <span className="text-green-700">＜出勤正常＞</span>}
+            原：正常班{' '}
+            {rawStatus === 'abnormal' ? (
+              <span className="text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞</span>
+            ) : (
+              <span className="text-green-700">＜出勤正常 {formatHours(rawHours)} 小時＞</span>
+            )}
           </p>
           <p>
             申報：{leaveRequest.leave_type_name ?? '未知假別'}{' '}
@@ -123,9 +129,25 @@ export function LeaveDetailPanel({
               ? LEAVE_DURATION_TYPE_LABELS.full_day
               : `${leaveRequest.hours} 小時`}
           </p>
+          {leaveRequest.status === 'approved' && (
+            <p className="text-xs text-gray-500">
+              顯示為：
+              <span className="font-medium">
+                {
+                  computeLeaveDisplay({
+                    isPast: true,
+                    rawStatus,
+                    rawHours,
+                    defaultDailyHours,
+                    leaveRequest,
+                  }).label
+                }
+              </span>
+            </p>
+          )}
           {leaveRequest.duration_type === 'partial' && (
             <p className="text-xs text-gray-500">
-              原出勤時數 {rawHours ?? 0} + 請假 {leaveRequest.hours} 小時 ={' '}
+              原出勤時數 {formatHours(rawHours)} + 請假 {leaveRequest.hours} 小時 ={' '}
               {(Number(rawHours ?? 0) + Number(leaveRequest.hours ?? 0)).toFixed(2)} 小時，約定工時{' '}
               {defaultDailyHours} 小時 →{' '}
               {Number(rawHours ?? 0) + Number(leaveRequest.hours ?? 0) >= defaultDailyHours
@@ -172,7 +194,7 @@ export function LeaveDetailPanel({
         </div>
       ) : canDeclare ? (
         <div className="space-y-3">
-          <p className="text-sm text-red-600">＜出勤異常＞ 可申報假別</p>
+          <p className="text-sm text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞ 可申報假別</p>
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="block text-xs text-gray-600 mb-1">假別</label>

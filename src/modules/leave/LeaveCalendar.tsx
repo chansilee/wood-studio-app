@@ -4,6 +4,7 @@ import { useAuth } from '@/shared/hooks/useAuth'
 import { useSchedulePublications, type PublicationSnapshotEntry } from '@/modules/scheduling/usePublications'
 import { daysInMonth, getMonthGrid, pad2, todayStr } from '@/shared/lib/date'
 import { LeaveDetailPanel } from './LeaveDetailPanel'
+import { computeLeaveDisplay } from './leaveDisplay'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -221,31 +222,15 @@ export function LeaveCalendar() {
 
                 const isPast = date < today
                 const leaveReq = leaveMap[date]
-                const rawStatus = attendanceMap[date]?.status ?? 'abnormal'
+                const rawStatus = (attendanceMap[date]?.status as 'normal' | 'abnormal') ?? 'abnormal'
 
-                let label = ''
-                let colorClass = 'bg-white'
-                let clickable = false
-
-                if (!isPast) {
-                  colorClass = 'bg-white text-gray-300'
-                } else if (leaveReq) {
-                  clickable = true
-                  if (leaveReq.status === 'pending') {
-                    label = '審核中'
-                    colorClass = 'bg-yellow-50 text-yellow-800'
-                  } else if (leaveReq.status === 'approved') {
-                    label = leaveReq.leave_type_name ?? '已核准'
-                    colorClass = 'bg-blue-50 text-blue-800'
-                  } else {
-                    label = rawStatus === 'normal' ? '正常出勤' : '異常出勤'
-                    colorClass = rawStatus === 'normal' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-                  }
-                } else {
-                  label = rawStatus === 'normal' ? '正常出勤' : '異常出勤'
-                  colorClass = rawStatus === 'normal' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-                  clickable = rawStatus === 'abnormal'
-                }
+                const { label, colorClass, clickable } = computeLeaveDisplay({
+                  isPast,
+                  rawStatus,
+                  rawHours: attendanceMap[date]?.hours ?? null,
+                  defaultDailyHours,
+                  leaveRequest: leaveReq,
+                })
 
                 return (
                   <button
