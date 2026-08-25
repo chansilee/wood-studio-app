@@ -8,7 +8,7 @@ export type Json =
 
 export type Database = {
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -203,6 +203,48 @@ export type Database = {
           },
         ]
       }
+      member_week_start_overrides: {
+        Row: {
+          id: string
+          member_id: string
+          updated_at: string
+          updated_by: string | null
+          week_start_weekday: number
+          year_month: string
+        }
+        Insert: {
+          id?: string
+          member_id: string
+          updated_at?: string
+          updated_by?: string | null
+          week_start_weekday: number
+          year_month: string
+        }
+        Update: {
+          id?: string
+          member_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          week_start_weekday?: number
+          year_month?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_week_start_overrides_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_week_start_overrides_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_settings: {
         Row: {
           allow_delete_records: boolean
@@ -330,27 +372,33 @@ export type Database = {
           default_daily_hours: number
           display_name: string
           email: string
+          hire_date: string | null
           id: string
           role: Database["public"]["Enums"]["member_role"]
           updated_at: string
+          weekly_rest_check_enabled: boolean
         }
         Insert: {
           created_at?: string
           default_daily_hours?: number
           display_name?: string
           email: string
+          hire_date?: string | null
           id: string
           role?: Database["public"]["Enums"]["member_role"]
           updated_at?: string
+          weekly_rest_check_enabled?: boolean
         }
         Update: {
           created_at?: string
           default_daily_hours?: number
           display_name?: string
           email?: string
+          hire_date?: string | null
           id?: string
           role?: Database["public"]["Enums"]["member_role"]
           updated_at?: string
+          weekly_rest_check_enabled?: boolean
         }
         Relationships: []
       }
@@ -652,6 +700,23 @@ export type Enums<
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {

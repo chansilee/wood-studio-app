@@ -23,11 +23,17 @@ export function MonthCalendarGrid({
   month,
   cells,
   onDayClick,
+  weekStartWeekday,
+  minDate,
 }: {
   year: number
   month: number
   cells: Record<string, DayCell>
   onDayClick?: (date: string) => void
+  /** 0=Sun..6=Sat; when set, draws a thick left border on that weekday's column */
+  weekStartWeekday?: number
+  /** dates before this (YYYY-MM-DD) are shown muted and are never clickable */
+  minDate?: string | null
 }) {
   const weeks = getMonthGrid(year, month)
 
@@ -46,10 +52,14 @@ export function MonthCalendarGrid({
             if (!date) return <div key={di} className="border p-2 h-20 bg-gray-50" />
             const cell = cells[date]
             const day = Number(date.slice(-2))
-            const clickable = !!onDayClick && !cell?.overrideName
-            const colorClass = cell?.overrideName
-              ? 'bg-red-50 text-red-700'
-              : STATUS_COLOR[cell?.status ?? 'unscheduled']
+            const beforeMin = !!minDate && date < minDate
+            const clickable = !!onDayClick && !cell?.overrideName && !beforeMin
+            const isWeekStartCol = weekStartWeekday !== undefined && di === weekStartWeekday
+            const colorClass = beforeMin
+              ? 'bg-gray-100 text-gray-300'
+              : cell?.overrideName
+                ? 'bg-red-50 text-red-700'
+                : STATUS_COLOR[cell?.status ?? 'unscheduled']
             return (
               <button
                 key={di}
@@ -57,12 +67,12 @@ export function MonthCalendarGrid({
                 disabled={!clickable}
                 onClick={() => onDayClick?.(date)}
                 className={`border p-1 h-20 text-left flex flex-col ${colorClass} ${
-                  clickable ? 'cursor-pointer hover:brightness-95' : 'cursor-default'
-                }`}
+                  isWeekStartCol ? 'border-l-4 border-l-gray-900' : ''
+                } ${clickable ? 'cursor-pointer hover:brightness-95' : 'cursor-default'}`}
               >
                 <span className="text-xs text-gray-500">{day}</span>
                 <span className="text-xs font-medium mt-1 break-words">
-                  {cell?.overrideName ?? SHIFT_STATUS_LABELS[cell?.status ?? 'unscheduled']}
+                  {beforeMin ? '' : cell?.overrideName ?? SHIFT_STATUS_LABELS[cell?.status ?? 'unscheduled']}
                 </span>
               </button>
             )

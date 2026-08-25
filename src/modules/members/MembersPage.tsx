@@ -32,9 +32,13 @@ export function MembersPage() {
     setSavingId(id)
     setError(null)
     const { error } = await supabase.from('profiles').update({ role }).eq('id', id)
-    if (error) setError(error.message)
-    else setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, role } : m)))
     setSavingId(null)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    // role changes also reset weekly_rest_check_enabled server-side; reload to stay in sync
+    load()
   }
 
   const updateDailyHours = async (id: string, hours: number) => {
@@ -53,13 +57,41 @@ export function MembersPage() {
     setSavingId(null)
   }
 
+  const updateHireDate = async (id: string, hireDate: string) => {
+    setSavingId(id)
+    setError(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ hire_date: hireDate || null })
+      .eq('id', id)
+    if (error) setError(error.message)
+    else
+      setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, hire_date: hireDate || null } : m)))
+    setSavingId(null)
+  }
+
+  const updateWeeklyRestCheck = async (id: string, enabled: boolean) => {
+    setSavingId(id)
+    setError(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ weekly_rest_check_enabled: enabled })
+      .eq('id', id)
+    if (error) setError(error.message)
+    else
+      setMembers((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, weekly_rest_check_enabled: enabled } : m))
+      )
+    setSavingId(null)
+  }
+
   if (loading) return <div className="p-6">載入中…</div>
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       <h1 className="text-xl font-semibold mb-4">成員管理</h1>
       <p className="text-sm text-gray-600 mb-4">
-        新註冊的帳號預設為「訪客」，請在此指派正確身分。只有負責人可以修改身分與約定每日工時。
+        新註冊的帳號預設為「訪客」，請在此指派正確身分。只有負責人可以修改身分、約定每日工時、到職日與一例一休檢查設定。
       </p>
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
       <div className="overflow-x-auto">
@@ -70,6 +102,8 @@ export function MembersPage() {
               <th className="py-2 pr-4">Email</th>
               <th className="py-2 pr-4">身分</th>
               <th className="py-2 pr-4">約定每日工時</th>
+              <th className="py-2 pr-4">到職日</th>
+              <th className="py-2 pr-4">一例一休檢查</th>
             </tr>
           </thead>
           <tbody>
@@ -102,6 +136,23 @@ export function MembersPage() {
                     className="border rounded px-2 py-1 w-20"
                   />
                   <span className="ml-1 text-gray-500">小時</span>
+                </td>
+                <td className="py-2 pr-4">
+                  <input
+                    type="date"
+                    defaultValue={m.hire_date ?? ''}
+                    disabled={savingId === m.id}
+                    onBlur={(e) => updateHireDate(m.id, e.target.value)}
+                    className="border rounded px-2 py-1"
+                  />
+                </td>
+                <td className="py-2 pr-4">
+                  <input
+                    type="checkbox"
+                    checked={m.weekly_rest_check_enabled}
+                    disabled={savingId === m.id}
+                    onChange={(e) => updateWeeklyRestCheck(m.id, e.target.checked)}
+                  />
                 </td>
               </tr>
             ))}

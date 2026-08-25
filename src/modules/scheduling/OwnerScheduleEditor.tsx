@@ -5,7 +5,8 @@ import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
 import { Legend } from './Legend'
 import { PublicationBar } from './PublicationBar'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
-import { daysInMonth, pad2, todayStr } from '@/shared/lib/date'
+import { useWeekStart } from './useWeekStart'
+import { checkWeeklyRestCompliance, daysInMonth, pad2, todayStr } from '@/shared/lib/date'
 import { SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
 import type { Enums, Tables } from '@/shared/types/database'
 
@@ -13,6 +14,7 @@ type ShiftStatus = Enums<'shift_status'>
 type Profile = Tables<'profiles'>
 
 const BRUSH_OPTIONS: ShiftStatus[] = ['normal', 'regular_off', 'special_off', 'unscheduled']
+const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六']
 
 export function OwnerScheduleEditor() {
   const { session, profile } = useAuth()
@@ -31,6 +33,13 @@ export function OwnerScheduleEditor() {
   const { publications, reload: reloadPublications } = useSchedulePublications(
     selectedMemberId || undefined,
     yearMonth
+  )
+
+  const selectedMember = members.find((m) => m.id === selectedMemberId)
+  const { weekStartWeekday, shiftWeekStart } = useWeekStart(
+    selectedMemberId || undefined,
+    yearMonth,
+    selectedMember?.hire_date
   )
 
   useEffect(() => {
@@ -87,6 +96,7 @@ export function OwnerScheduleEditor() {
   const applyBrush = (date: string) => {
     if (overridesMap[date]) return
     if (viewingId !== 'live') return
+    if (selectedMember?.hire_date && date < selectedMember.hire_date) return
     setLocalStatus((prev) => ({ ...prev, [date]: brush }))
   }
 
@@ -129,8 +139,6 @@ export function OwnerScheduleEditor() {
     reloadPublications()
   }
 
-  const selectedMember = members.find((m) => m.id === selectedMemberId)
-
   const viewingPublication = viewingId === 'live' ? null : publications.find((p) => p.id === viewingId)
   const displayStatus: Record<string, ShiftStatus> =
     viewingId === 'live'
@@ -151,6 +159,7 @@ export function OwnerScheduleEditor() {
   }
 
   const editing = viewingId === 'live'
+  const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
 
   return (
     <div>
@@ -182,6 +191,7 @@ export function OwnerScheduleEditor() {
         {selectedMember && (
           <div className="text-sm text-gray-600">
             約定每日工時：{selectedMember.default_daily_hours} 小時
+            {selectedMember.hire_date && <span className="ml-2">到職日：{selectedMember.hire_date}</span>}
           </div>
         )}
         <button
@@ -234,7 +244,33 @@ export function OwnerScheduleEditor() {
             month={month}
             cells={cells}
             onDayClick={editing ? applyBrush : undefined}
+            weekStartWeekday={weekStartWeekday}
+            minDate={selectedMember?.hire_date}
           />
+
+          <div className="flex items-center gap-2 mt-3 text-sm">
+            <span className="text-gray-600">切換周起始：{WEEKDAY_NAMES[weekStartWeekday]}</span>
+            <button
+              onClick={() => shiftWeekStart(-1, session?.user.id)}
+              disabled={!editing}
+              className="border rounded px-2 py-0.5 disabled:opacity-40"
+            >
+              &lt;
+            </button>
+            <button
+              onClick={() => shiftWeekStart(1, session?.user.id)}
+              disabled={!editing}
+              className="border rounded px-2 py-0.5 disabled:opacity-40"
+            >
+              &gt;
+            </button>
+          </div>
+
+          {selectedMember?.weekly_rest_check_enabled && (
+            <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
+              {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
+            </p>
+          )}
         </>
       )}
     </div>

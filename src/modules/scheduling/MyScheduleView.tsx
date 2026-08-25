@@ -5,7 +5,8 @@ import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
 import { Legend } from './Legend'
 import { PublicationBar } from './PublicationBar'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
-import { daysInMonth, pad2, todayStr } from '@/shared/lib/date'
+import { useWeekStart } from './useWeekStart'
+import { checkWeeklyRestCompliance, daysInMonth, pad2, todayStr } from '@/shared/lib/date'
 import type { Enums } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
@@ -20,6 +21,7 @@ export function MyScheduleView() {
 
   const [year, month] = yearMonth.split('-').map(Number)
   const { publications } = useSchedulePublications(profile?.id, yearMonth)
+  const { weekStartWeekday } = useWeekStart(profile?.id, yearMonth, profile?.hire_date)
 
   useEffect(() => {
     if (!profile) return
@@ -77,6 +79,8 @@ export function MyScheduleView() {
     cells[date] = { status: 'unscheduled', overrideName: name }
   }
 
+  const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
@@ -94,7 +98,17 @@ export function MyScheduleView() {
         <>
           <PublicationBar publications={publications} viewingId={viewingId} onChange={setViewingId} />
           <Legend />
-          <MonthCalendarGrid year={year} month={month} cells={cells} />
+          <MonthCalendarGrid
+            year={year}
+            month={month}
+            cells={cells}
+            weekStartWeekday={weekStartWeekday}
+          />
+          {profile?.weekly_rest_check_enabled && (
+            <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
+              {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
+            </p>
+          )}
         </>
       )}
     </div>

@@ -51,3 +51,53 @@ export function formatDateTime(iso: string): string {
   const s = pad2(d.getSeconds())
   return `${y}/${mo}/${da} ${h}:${mi}:${s}`
 }
+
+/** 0=Sunday..6=Saturday, matching JS Date#getDay() */
+export function weekdayFromDateStr(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d).getDay()
+}
+
+/**
+ * Checks whether every calendar week fully contained within the given month
+ * (per weekStartWeekday) has at least one '例假' (regular_off) and one
+ * '休假' (special_off) day. Weeks that spill into the previous/next month
+ * are not "complete" and are skipped, per spec.
+ */
+export function checkWeeklyRestCompliance(
+  year: number,
+  month: number,
+  weekStartWeekday: number,
+  statusMap: Record<string, string | undefined>
+): boolean {
+  const total = daysInMonth(year, month)
+  const lastDate = new Date(year, month - 1, total)
+
+  const cursor = new Date(year, month - 1, 1)
+  while (cursor.getDay() !== weekStartWeekday) {
+    cursor.setDate(cursor.getDate() + 1)
+  }
+
+  let compliant = true
+  while (true) {
+    const weekEnd = new Date(cursor)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+    if (weekEnd > lastDate) break
+
+    let hasRegularOff = false
+    let hasSpecialOff = false
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(cursor)
+      d.setDate(d.getDate() + i)
+      const key = toDateStr(d.getFullYear(), d.getMonth() + 1, d.getDate())
+      const status = statusMap[key]
+      if (status === 'regular_off') hasRegularOff = true
+      if (status === 'special_off') hasSpecialOff = true
+    }
+    if (!(hasRegularOff && hasSpecialOff)) compliant = false
+
+    cursor.setDate(cursor.getDate() + 7)
+  }
+
+  return compliant
+}
