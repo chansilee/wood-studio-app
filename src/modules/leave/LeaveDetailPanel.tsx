@@ -18,6 +18,8 @@ export function LeaveDetailPanel({
   memberId,
   isOwner,
   canDeclare,
+  canUseManagerOverride,
+  allowDeleteRecords,
   leaveRequest,
   rawStatus,
   rawHours,
@@ -30,6 +32,10 @@ export function LeaveDetailPanel({
   memberId: string
   isOwner: boolean
   canDeclare: boolean
+  /** owner-only: this day is abnormal attendance and has no existing leave/override record yet */
+  canUseManagerOverride: boolean
+  /** org_settings.allow_delete_records — gates deletion of manager-override records */
+  allowDeleteRecords: boolean
   leaveRequest?: LeaveRequestRow
   rawStatus: 'normal' | 'abnormal'
   rawHours: number | null
@@ -43,6 +49,7 @@ export function LeaveDetailPanel({
   const [durationType, setDurationType] = useState<DurationType>('full_day')
   const [hours, setHours] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [overriding, setOverriding] = useState(false)
   const [acting, setActing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -68,6 +75,25 @@ export function LeaveDetailPanel({
     setSubmitting(false)
     if (error) {
       setError(`申報失敗：${error.message}`)
+      return
+    }
+    onChanged()
+  }
+
+  const submitOverride = async () => {
+    setOverriding(true)
+    setError(null)
+
+    const payload: TablesInsert<'leave_requests'> = {
+      member_id: memberId,
+      leave_date: date,
+      is_manager_override: true,
+      leave_type_id: null,
+    }
+    const { error } = await supabase.from('leave_requests').insert(payload)
+    setOverriding(false)
+    if (error) {
+      setError(`操作失敗：${error.message}`)
       return
     }
     onChanged()
@@ -102,6 +128,12 @@ export function LeaveDetailPanel({
     onChanged()
   }
 
+  const canDelete = leaveRequest
+    ? leaveRequest.is_manager_override
+      ? isOwner && allowDeleteRecords
+      : isOwner || memberId === profile?.id
+    : false
+
   return (
     <div className="border rounded p-4 bg-gray-50 mb-6">
       <div className="flex items-center justify-between mb-3">
@@ -124,10 +156,14 @@ export function LeaveDetailPanel({
             )}
           </p>
           <p>
-            申報：{leaveRequest.leave_type_name ?? '未知假別'}{' '}
-            {leaveRequest.duration_type === 'full_day'
-              ? LEAVE_DURATION_TYPE_LABELS.full_day
-              : `${leaveRequest.hours} 小時`}
+            申報：
+            {leaveRequest.is_manager_override
+              ? '主管同意提早下班'
+              : `${leaveRequest.leave_type_name ?? '未知假別'} ${
+                  leaveRequest.duration_type === 'full_day'
+                    ? LEAVE_DURATION_TYPE_LABELS.full_day
+                    : `${leaveRequest.hours} 小時`
+                }`}
           </p>
           {leaveRequest.status === 'approved' &&
             (() => {
@@ -153,7 +189,7 @@ export function LeaveDetailPanel({
                 </p>
               )
             })()}
-          {leaveRequest.duration_type === 'partial' && (
+          {!leaveRequest.is_manager_override && leaveRequest.duration_type === 'partial' && (
             <p className="text-xs text-gray-500">
               原出勤時數 {formatHours(rawHours)} + 請假 {leaveRequest.hours} 小時 ={' '}
               {(Number(rawHours ?? 0) + Number(leaveRequest.hours ?? 0)).toFixed(2)} 小時，約定工時{' '}
@@ -189,7 +225,7 @@ export function LeaveDetailPanel({
                 </button>
               </>
             )}
-            {(isOwner || memberId === profile?.id) && (
+            {canDelete && (
               <button
                 onClick={remove}
                 disabled={acting}
@@ -200,56 +236,75 @@ export function LeaveDetailPanel({
             )}
           </div>
         </div>
-      ) : canDeclare ? (
-        <div className="space-y-3">
-          <p className="text-sm text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞ 可申報假別</p>
-          <div className="flex flex-wrap items-end gap-3">
+      ) : canDeclare || canUseManagerOverride ? (
+        <div className="space-y-4">
+          <p className="text-sm text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞</p>
+
+          {canDeclare && (
             <div>
-              <label className="block text-xs text-gray-600 mb-1">假別</label>
-              <select
-                value={leaveTypeId}
-                onChange={(e) => setLeaveTypeId(e.target.value)}
-                className="border rounded px-2 py-1"
-              >
-                {leaveTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">申報方式</label>
-              <select
-                value={durationType}
-                onChange={(e) => setDurationType(e.target.value as DurationType)}
-                className="border rounded px-2 py-1"
-              >
-                <option value="full_day">全天</option>
-                <option value="partial">部分時數</option>
-              </select>
-            </div>
-            {durationType === 'partial' && (
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">時數</label>
-                <input
-                  type="number"
-                  min={0.5}
-                  step={0.5}
-                  value={hours}
-                  onChange={(e) => setHours(e.target.value)}
-                  className="border rounded px-2 py-1 w-24"
-                />
+              <p className="text-xs text-gray-500 mb-2">正常流程：</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">假別</label>
+                  <select
+                    value={leaveTypeId}
+                    onChange={(e) => setLeaveTypeId(e.target.value)}
+                    className="border rounded px-2 py-1"
+                  >
+                    {leaveTypes.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">申報方式</label>
+                  <select
+                    value={durationType}
+                    onChange={(e) => setDurationType(e.target.value as DurationType)}
+                    className="border rounded px-2 py-1"
+                  >
+                    <option value="full_day">全天</option>
+                    <option value="partial">部分時數</option>
+                  </select>
+                </div>
+                {durationType === 'partial' && (
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">時數</label>
+                    <input
+                      type="number"
+                      min={0.5}
+                      step={0.5}
+                      value={hours}
+                      onChange={(e) => setHours(e.target.value)}
+                      className="border rounded px-2 py-1 w-24"
+                    />
+                  </div>
+                )}
+                <button
+                  onClick={submit}
+                  disabled={submitting || !leaveTypeId}
+                  className="bg-black text-white rounded px-4 py-1.5 text-sm disabled:opacity-50"
+                >
+                  {submitting ? '送出中…' : '送出申報'}
+                </button>
               </div>
-            )}
-            <button
-              onClick={submit}
-              disabled={submitting || !leaveTypeId}
-              className="bg-black text-white rounded px-4 py-1.5 text-sm disabled:opacity-50"
-            >
-              {submitting ? '送出中…' : '送出申報'}
-            </button>
-          </div>
+            </div>
+          )}
+
+          {canUseManagerOverride && (
+            <div className={canDeclare ? 'pt-3 border-t' : undefined}>
+              <p className="text-xs text-gray-500 mb-2">特殊流程：</p>
+              <button
+                onClick={submitOverride}
+                disabled={overriding}
+                className="bg-indigo-600 text-white rounded px-4 py-1.5 text-sm disabled:opacity-50"
+              >
+                {overriding ? '處理中…' : '主管同意提早下班'}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <p className="text-sm text-gray-400">尚未申報</p>

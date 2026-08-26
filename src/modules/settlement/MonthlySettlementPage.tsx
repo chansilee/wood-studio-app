@@ -81,7 +81,7 @@ export function MonthlySettlementPage() {
         .lte('work_date', lastDay),
       supabase
         .from('leave_requests')
-        .select('leave_date, duration_type, hours, leave_types(name)')
+        .select('leave_date, duration_type, hours, is_manager_override, leave_types(name)')
         .eq('member_id', memberId)
         .eq('status', 'approved')
         .gte('leave_date', firstDay)
@@ -97,7 +97,13 @@ export function MonthlySettlementPage() {
       }
     }
 
-    type LeaveJoinRow = { leave_date: string; duration_type: string; hours: number | null; leave_types: { name: string } | null }
+    type LeaveJoinRow = {
+      leave_date: string
+      duration_type: string
+      hours: number | null
+      is_manager_override: boolean
+      leave_types: { name: string } | null
+    }
     const leaveMap: Record<string, LeaveJoinRow> = {}
     for (const r of (leaveRows ?? []) as LeaveJoinRow[]) {
       leaveMap[r.leave_date] = r
@@ -108,6 +114,18 @@ export function MonthlySettlementPage() {
       const rawStatus: 'normal' | 'abnormal' = att?.status === 'normal' ? 'normal' : 'abnormal'
       const rawHours = att?.hours ?? 0
       const leave = leaveMap[date]
+
+      if (leave?.is_manager_override) {
+        return {
+          date,
+          rawStatus,
+          rawHours,
+          leaveLabel: '主管同意提早下班',
+          leaveTypeName: null,
+          leaveContributedHours: 0,
+          settledHours: Math.floor((defaultDailyHours + 1e-9) * 2) / 2,
+        }
+      }
 
       let leaveLabel = '無'
       let leaveTypeName: string | null = null

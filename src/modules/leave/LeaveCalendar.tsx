@@ -28,6 +28,7 @@ export function LeaveCalendar() {
   >({})
   const [leaveMap, setLeaveMap] = useState<Record<string, LeaveRequestRow>>({})
   const [defaultDailyHours, setDefaultDailyHours] = useState(6)
+  const [allowDeleteRecords, setAllowDeleteRecords] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -67,6 +68,16 @@ export function LeaveCalendar() {
       .single()
       .then(({ data }) => setDefaultDailyHours(Number(data?.default_daily_hours ?? 6)))
   }, [memberId])
+
+  useEffect(() => {
+    if (!isOwner) return
+    supabase
+      .from('org_settings')
+      .select('allow_delete_records')
+      .eq('id', 1)
+      .single()
+      .then(({ data }) => setAllowDeleteRecords(data?.allow_delete_records ?? false))
+  }, [isOwner, refreshKey])
 
   useEffect(() => {
     if (!memberId) return
@@ -176,23 +187,31 @@ export function LeaveCalendar() {
         月曆依「最新公告」的排班為準；只有正常班且出勤異常的日期可以點選申報假別。
       </p>
 
-      {selectedDate && selectedMember && (
-        <LeaveDetailPanel
-          date={selectedDate}
-          memberId={memberId}
-          isOwner={isOwner}
-          canDeclare={memberId === profile?.id && !leaveMap[selectedDate]}
-          leaveRequest={leaveMap[selectedDate]}
-          rawStatus={(attendanceMap[selectedDate]?.status as 'normal' | 'abnormal') ?? 'abnormal'}
-          rawHours={attendanceMap[selectedDate]?.hours ?? null}
-          defaultDailyHours={defaultDailyHours}
-          leaveTypes={leaveTypes}
-          onChanged={() => {
-            bump()
-          }}
-          onClose={() => setSelectedDate(null)}
-        />
-      )}
+      {selectedDate &&
+        selectedMember &&
+        (() => {
+          const selectedRawStatus =
+            (attendanceMap[selectedDate]?.status as 'normal' | 'abnormal') ?? 'abnormal'
+          return (
+            <LeaveDetailPanel
+              date={selectedDate}
+              memberId={memberId}
+              isOwner={isOwner}
+              canDeclare={memberId === profile?.id && !leaveMap[selectedDate]}
+              canUseManagerOverride={isOwner && !leaveMap[selectedDate] && selectedRawStatus === 'abnormal'}
+              allowDeleteRecords={allowDeleteRecords}
+              leaveRequest={leaveMap[selectedDate]}
+              rawStatus={selectedRawStatus}
+              rawHours={attendanceMap[selectedDate]?.hours ?? null}
+              defaultDailyHours={defaultDailyHours}
+              leaveTypes={leaveTypes}
+              onChanged={() => {
+                bump()
+              }}
+              onClose={() => setSelectedDate(null)}
+            />
+          )
+        })()}
 
       {loading ? (
         <div>載入中…</div>

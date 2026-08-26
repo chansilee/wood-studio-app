@@ -118,8 +118,9 @@ export type Database = {
           duration_type: Database["public"]["Enums"]["leave_duration_type"]
           hours: number | null
           id: string
+          is_manager_override: boolean
           leave_date: string
-          leave_type_id: string
+          leave_type_id: string | null
           member_id: string
           reason: string | null
           reviewed_at: string | null
@@ -131,8 +132,9 @@ export type Database = {
           duration_type?: Database["public"]["Enums"]["leave_duration_type"]
           hours?: number | null
           id?: string
+          is_manager_override?: boolean
           leave_date: string
-          leave_type_id: string
+          leave_type_id?: string | null
           member_id: string
           reason?: string | null
           reviewed_at?: string | null
@@ -144,8 +146,9 @@ export type Database = {
           duration_type?: Database["public"]["Enums"]["leave_duration_type"]
           hours?: number | null
           id?: string
+          is_manager_override?: boolean
           leave_date?: string
-          leave_type_id?: string
+          leave_type_id?: string | null
           member_id?: string
           reason?: string | null
           reviewed_at?: string | null

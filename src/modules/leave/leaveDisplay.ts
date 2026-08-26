@@ -8,6 +8,7 @@ export interface LeaveDisplayLeaveRequest {
   duration_type: 'full_day' | 'partial'
   hours: number | string | null
   leave_type_name?: string
+  is_manager_override?: boolean
 }
 
 export interface LeaveDisplayResult {
@@ -40,6 +41,15 @@ export function computeLeaveDisplay({
 }): LeaveDisplayResult {
   if (!isPast) {
     return { primaryLabel: '', colorClass: 'bg-white text-gray-300', clickable: false }
+  }
+
+  if (leaveRequest?.is_manager_override) {
+    return {
+      primaryLabel: '主管同意提早下班',
+      colorClass: 'bg-indigo-50 text-indigo-800',
+      clickable: true,
+      qualifies: true,
+    }
   }
 
   if (leaveRequest) {
