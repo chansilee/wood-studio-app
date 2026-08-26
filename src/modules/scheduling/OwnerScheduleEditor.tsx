@@ -310,35 +310,36 @@ export function OwnerScheduleEditor() {
         <div>載入中…</div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
-            <span className="text-gray-700">目前狀態：暫態（可編輯）</span>
-            {publications.length > 0 && (
-              <button
-                onClick={handleRevert}
-                disabled={reverting}
-                className="text-xs border rounded px-2 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {reverting ? '還原中…' : '還原回最新公告狀態'}
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2 mb-2">
-            {BRUSH_OPTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={brush === s}
-                onClick={() => setBrush(s)}
-                className={`px-3 py-1.5 rounded text-sm border transition ${
-                  brush === s
-                    ? 'bg-black text-white border-black ring-2 ring-offset-1 ring-black'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                {SHIFT_STATUS_LABELS[s]}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <div className="flex flex-wrap gap-2">
+              {BRUSH_OPTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={brush === s}
+                  onClick={() => setBrush(s)}
+                  className={`px-3 py-1.5 rounded text-sm border transition ${
+                    brush === s
+                      ? 'bg-black text-white border-black ring-2 ring-offset-1 ring-black'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {SHIFT_STATUS_LABELS[s]}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="text-gray-700">目前狀態：暫態（可編輯）</span>
+              {publications.length > 0 && (
+                <button
+                  onClick={handleRevert}
+                  disabled={reverting}
+                  className="text-xs border rounded px-2 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {reverting ? '還原中…' : '還原回最新公告狀態'}
+                </button>
+              )}
+            </div>
           </div>
           <p className="text-xs text-gray-500 mb-2">
             先選上面的班別狀態，再點下面日期套用該狀態，每次點擊會立即儲存為暫態
