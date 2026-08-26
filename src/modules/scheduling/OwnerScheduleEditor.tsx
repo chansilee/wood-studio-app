@@ -17,15 +17,22 @@ type Profile = Tables<'profiles'>
 const BRUSH_OPTIONS: ShiftStatus[] = ['normal', 'regular_off', 'special_off', 'unscheduled']
 const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六']
 
+function statusMapsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) return false
+  return aKeys.every((k) => a[k] === b[k])
+}
+
 export function OwnerScheduleEditor() {
   const { session, profile } = useAuth()
   const [members, setMembers] = useState<Profile[]>([])
   const [selectedMemberId, setSelectedMemberId] = useState<string>('')
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
-  const [localStatus, setLocalStatus] = useState<Record<string, ShiftStatus>>({})
+  const [savedStatus, setSavedStatus] = useState<Record<string, ShiftStatus>>({})
   const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [publishing, setPublishing] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [brush, setBrush] = useState<ShiftStatus>('normal')
   const [viewingId, setViewingId] = useState<string | 'live'>('live')
@@ -64,6 +71,58 @@ export function OwnerScheduleEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMemberId, yearMonth])
 
+  // realtime: keep 暫態 in sync across owner sessions editing the same member+month
+  useEffect(() => {
+    if (!selectedMemberId) return
+    const channel = supabase
+      .channel(`schedules-${selectedMemberId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'schedules', filter: `member_id=eq.${selectedMemberId}` },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as { work_date?: string; status?: ShiftStatus } | null
+          if (!row?.work_date || !row.work_date.startsWith(yearMonth)) return
+          if (payload.eventType === 'DELETE') {
+            setSavedStatus((prev) => {
+              const next = { ...prev }
+              delete next[row.work_date as string]
+              return next
+            })
+          } else if (row.status) {
+            setSavedStatus((prev) => ({ ...prev, [row.work_date as string]: row.status as ShiftStatus }))
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [selectedMemberId, yearMonth])
+
+  // realtime: refresh publication status when anyone publishes for this member (any month)
+  useEffect(() => {
+    if (!selectedMemberId) return
+    const channel = supabase
+      .channel(`schedule_publications-${selectedMemberId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'schedule_publications',
+          filter: `member_id=eq.${selectedMemberId}`,
+        },
+        () => reloadPublications()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMemberId])
+
   const load = async () => {
     setLoading(true)
     setMessage(null)
@@ -90,62 +149,64 @@ export function OwnerScheduleEditor() {
 
     const statusMap: Record<string, ShiftStatus> = {}
     for (const row of scheduleRows ?? []) statusMap[row.work_date] = row.status
-    setLocalStatus(statusMap)
+    setSavedStatus(statusMap)
 
     setLoading(false)
   }
 
-  const applyBrush = (date: string) => {
+  const applyBrush = async (date: string) => {
     if (overridesMap[date]) return
     if (viewingId !== 'live') return
     if (selectedMember?.hire_date && date < selectedMember.hire_date) return
     if (orgSettings?.block_past_scheduling && date < todayStr()) return
-    setLocalStatus((prev) => ({ ...prev, [date]: brush }))
-  }
-
-  const handleSave = async () => {
     if (!session || !selectedMemberId) return
-    setSaving(true)
-    setMessage(null)
-    const rows = Object.entries(localStatus)
-      .filter(([date]) => !overridesMap[date])
-      .map(([work_date, status]) => ({
+
+    const previous = savedStatus[date]
+    setSavedStatus((prev) => ({ ...prev, [date]: brush }))
+    const { error } = await supabase.from('schedules').upsert(
+      {
         member_id: selectedMemberId,
-        work_date,
-        status,
+        work_date: date,
+        status: brush,
         created_by: session.user.id,
         updated_by: session.user.id,
-      }))
-
-    const { error: upsertError } = await supabase
-      .from('schedules')
-      .upsert(rows, { onConflict: 'member_id,work_date' })
-    if (upsertError) {
-      setSaving(false)
-      setMessage(`儲存失敗：${upsertError.message}`)
-      return
+      },
+      { onConflict: 'member_id,work_date' }
+    )
+    if (error) {
+      setSavedStatus((prev) => ({ ...prev, [date]: previous }))
+      setMessage(`儲存失敗：${error.message}`)
     }
+  }
 
-    const { error: publishError } = await supabase.from('schedule_publications').insert({
+  const handlePublish = async () => {
+    if (!session || !selectedMemberId) return
+    setPublishing(true)
+    setMessage(null)
+
+    const rows = Object.entries(savedStatus)
+      .filter(([date]) => !overridesMap[date])
+      .map(([work_date, status]) => ({ work_date, status }))
+
+    const { error } = await supabase.from('schedule_publications').insert({
       member_id: selectedMemberId,
       year_month: `${yearMonth}-01`,
       published_by: session.user.id,
-      snapshot: rows.map(({ work_date, status }) => ({ work_date, status })),
+      snapshot: rows,
     })
-    setSaving(false)
-    if (publishError) {
-      setMessage(`已儲存班表，但公告紀錄失敗：${publishError.message}`)
+    setPublishing(false)
+    if (error) {
+      setMessage(`公告失敗：${error.message}`)
       return
     }
-    setMessage('已儲存並公告')
-    setViewingId('live')
+    setMessage('已公告給使用者')
     reloadPublications()
   }
 
   const viewingPublication = viewingId === 'live' ? null : publications.find((p) => p.id === viewingId)
   const displayStatus: Record<string, ShiftStatus> =
     viewingId === 'live'
-      ? localStatus
+      ? savedStatus
       : Object.fromEntries(
           ((viewingPublication?.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [
             e.work_date,
@@ -164,6 +225,21 @@ export function OwnerScheduleEditor() {
   const editing = viewingId === 'live'
   const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled
   const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
+
+  const currentSnapshotMap = Object.fromEntries(
+    Object.entries(savedStatus).filter(([date]) => !overridesMap[date])
+  )
+  const latestPub = publications[0]
+  const latestPubMap = latestPub
+    ? Object.fromEntries(
+        ((latestPub.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [e.work_date, e.status])
+      )
+    : null
+  const publishStatus: 'none' | 'synced' | 'drifted' = !latestPub
+    ? 'none'
+    : statusMapsEqual(currentSnapshotMap, latestPubMap!)
+      ? 'synced'
+      : 'drifted'
 
   return (
     <div>
@@ -198,13 +274,6 @@ export function OwnerScheduleEditor() {
             {selectedMember.hire_date && <span className="ml-2">到職日：{selectedMember.hire_date}</span>}
           </div>
         )}
-        <button
-          onClick={handleSave}
-          disabled={saving || loading || !editing}
-          className="ml-auto bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
-        >
-          {saving ? '儲存中…' : '儲存並公告'}
-        </button>
       </div>
 
       {message && <p className="text-sm mb-3 text-green-700">{message}</p>}
@@ -239,7 +308,7 @@ export function OwnerScheduleEditor() {
             ))}
           </div>
           <p className="text-xs text-gray-500 mb-2">
-            {editing ? '先選上面的班別狀態，再點下面日期套用該狀態' : ''}
+            {editing ? '先選上面的班別狀態，再點下面日期套用該狀態，每次點擊會立即儲存為暫態' : ''}
           </p>
 
           <Legend />
@@ -277,6 +346,33 @@ export function OwnerScheduleEditor() {
                 {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
               </p>
             </>
+          )}
+
+          {editing && (
+            <div className="mt-4">
+              <p
+                className={`text-sm mb-1 ${
+                  publishStatus === 'none'
+                    ? 'text-red-600'
+                    : publishStatus === 'synced'
+                      ? 'text-green-700'
+                      : 'text-orange-600'
+                }`}
+              >
+                {publishStatus === 'none'
+                  ? '<本月尚未公告給使用者>'
+                  : publishStatus === 'synced'
+                    ? '<本月已公告且當前暫態為最新狀態>'
+                    : '<當前暫態有更新未同步於最新公告>'}
+              </p>
+              <button
+                onClick={handlePublish}
+                disabled={publishing || loading}
+                className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {publishing ? '公告中…' : '公告給使用者'}
+              </button>
+            </div>
           )}
         </>
       )}

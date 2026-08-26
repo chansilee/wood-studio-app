@@ -30,7 +30,7 @@ export function PublicationBar({
           onChange={(e) => onChange(e.target.value)}
           className="border rounded px-2 py-1 text-xs"
         >
-          <option value="live">{editable ? '目前（可編輯）' : '目前'}</option>
+          <option value="live">{editable ? '暫態（可編輯）' : '目前'}</option>
           {publications.map((p, idx) => (
             <option key={p.id} value={p.id}>
               {formatDateTime(p.published_at)}

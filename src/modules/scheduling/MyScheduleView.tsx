@@ -14,7 +14,6 @@ type ShiftStatus = Enums<'shift_status'>
 export function MyScheduleView() {
   const { profile } = useAuth()
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
-  const [liveStatus, setLiveStatus] = useState<Record<string, ShiftStatus>>({})
   const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<string | 'live'>('live')
@@ -35,23 +34,11 @@ export function MyScheduleView() {
     const firstDay = `${year}-${pad2(month)}-01`
     const lastDay = `${year}-${pad2(month)}-${pad2(daysInMonth(year, month))}`
 
-    const [{ data: scheduleRows }, { data: overrideRows }] = await Promise.all([
-      supabase
-        .from('schedules')
-        .select('work_date, status')
-        .eq('member_id', profile!.id)
-        .gte('work_date', firstDay)
-        .lte('work_date', lastDay),
-      supabase
-        .from('calendar_overrides')
-        .select('override_date, name')
-        .gte('override_date', firstDay)
-        .lte('override_date', lastDay),
-    ])
-
-    const statusMap: Record<string, ShiftStatus> = {}
-    for (const row of scheduleRows ?? []) statusMap[row.work_date] = row.status
-    setLiveStatus(statusMap)
+    const { data: overrideRows } = await supabase
+      .from('calendar_overrides')
+      .select('override_date, name')
+      .gte('override_date', firstDay)
+      .lte('override_date', lastDay)
 
     const overrides: Record<string, string> = {}
     for (const o of overrideRows ?? []) overrides[o.override_date] = o.name
@@ -60,16 +47,15 @@ export function MyScheduleView() {
     setLoading(false)
   }
 
-  const viewingPublication = viewingId === 'live' ? null : publications.find((p) => p.id === viewingId)
-  const displayStatus: Record<string, ShiftStatus> =
-    viewingId === 'live'
-      ? liveStatus
-      : Object.fromEntries(
-          ((viewingPublication?.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [
-            e.work_date,
-            e.status,
-          ])
-        )
+  // "目前" always means the latest announced publication — an owner's unpublished
+  // 暫態 (draft) is never visible here until they click 公告給使用者.
+  const activePublication = viewingId === 'live' ? publications[0] : publications.find((p) => p.id === viewingId)
+  const displayStatus: Record<string, ShiftStatus> = Object.fromEntries(
+    ((activePublication?.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [
+      e.work_date,
+      e.status,
+    ])
+  )
 
   const cells: Record<string, DayCell> = {}
   for (const [date, status] of Object.entries(displayStatus)) {
