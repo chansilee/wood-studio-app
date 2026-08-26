@@ -6,6 +6,7 @@ import { Legend } from './Legend'
 import { PublicationBar } from './PublicationBar'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { useWeekStart } from './useWeekStart'
+import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { checkWeeklyRestCompliance, daysInMonth, pad2, todayStr } from '@/shared/lib/date'
 import { SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
 import type { Enums, Tables } from '@/shared/types/database'
@@ -41,6 +42,7 @@ export function OwnerScheduleEditor() {
     yearMonth,
     selectedMember?.hire_date
   )
+  const { settings: orgSettings } = useOrgSettings()
 
   useEffect(() => {
     supabase
@@ -97,6 +99,7 @@ export function OwnerScheduleEditor() {
     if (overridesMap[date]) return
     if (viewingId !== 'live') return
     if (selectedMember?.hire_date && date < selectedMember.hire_date) return
+    if (orgSettings?.block_past_scheduling && date < todayStr()) return
     setLocalStatus((prev) => ({ ...prev, [date]: brush }))
   }
 
@@ -247,6 +250,7 @@ export function OwnerScheduleEditor() {
             onDayClick={editing ? applyBrush : undefined}
             weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
             minDate={selectedMember?.hire_date}
+            readOnlyBefore={orgSettings?.block_past_scheduling ? todayStr() : undefined}
           />
 
           {showWeekStart && (

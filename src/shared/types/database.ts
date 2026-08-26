@@ -248,6 +248,7 @@ export type Database = {
       org_settings: {
         Row: {
           allow_delete_records: boolean
+          block_past_scheduling: boolean
           company_lat: number | null
           company_lng: number | null
           dinner_end: string | null
@@ -257,10 +258,12 @@ export type Database = {
           id: number
           lunch_end: string | null
           lunch_start: string | null
+          remind_month_end_publish: boolean
           updated_at: string
         }
         Insert: {
           allow_delete_records?: boolean
+          block_past_scheduling?: boolean
           company_lat?: number | null
           company_lng?: number | null
           dinner_end?: string | null
@@ -270,10 +273,12 @@ export type Database = {
           id?: number
           lunch_end?: string | null
           lunch_start?: string | null
+          remind_month_end_publish?: boolean
           updated_at?: string
         }
         Update: {
           allow_delete_records?: boolean
+          block_past_scheduling?: boolean
           company_lat?: number | null
           company_lng?: number | null
           dinner_end?: string | null
@@ -283,6 +288,7 @@ export type Database = {
           id?: number
           lunch_end?: string | null
           lunch_start?: string | null
+          remind_month_end_publish?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -374,6 +380,7 @@ export type Database = {
           email: string
           hire_date: string | null
           id: string
+          must_publish_schedule: boolean
           role: Database["public"]["Enums"]["member_role"]
           updated_at: string
           weekly_rest_check_enabled: boolean
@@ -385,6 +392,7 @@ export type Database = {
           email: string
           hire_date?: string | null
           id: string
+          must_publish_schedule?: boolean
           role?: Database["public"]["Enums"]["member_role"]
           updated_at?: string
           weekly_rest_check_enabled?: boolean
@@ -396,6 +404,7 @@ export type Database = {
           email?: string
           hire_date?: string | null
           id?: string
+          must_publish_schedule?: boolean
           role?: Database["public"]["Enums"]["member_role"]
           updated_at?: string
           weekly_rest_check_enabled?: boolean

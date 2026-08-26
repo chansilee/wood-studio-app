@@ -85,6 +85,19 @@ export function MembersPage() {
     setSavingId(null)
   }
 
+  const updateMustPublish = async (id: string, enabled: boolean) => {
+    setSavingId(id)
+    setError(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ must_publish_schedule: enabled })
+      .eq('id', id)
+    if (error) setError(error.message)
+    else
+      setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, must_publish_schedule: enabled } : m)))
+    setSavingId(null)
+  }
+
   if (loading) return <div className="p-6">載入中…</div>
 
   return (
@@ -104,6 +117,7 @@ export function MembersPage() {
               <th className="py-2 pr-4">約定每日工時</th>
               <th className="py-2 pr-4">到職日</th>
               <th className="py-2 pr-4">一例一休檢查</th>
+              <th className="py-2 pr-4">必須公告班表</th>
             </tr>
           </thead>
           <tbody>
@@ -152,6 +166,14 @@ export function MembersPage() {
                     checked={m.weekly_rest_check_enabled}
                     disabled={savingId === m.id}
                     onChange={(e) => updateWeeklyRestCheck(m.id, e.target.checked)}
+                  />
+                </td>
+                <td className="py-2 pr-4">
+                  <input
+                    type="checkbox"
+                    checked={m.must_publish_schedule}
+                    disabled={savingId === m.id}
+                    onChange={(e) => updateMustPublish(m.id, e.target.checked)}
                   />
                 </td>
               </tr>

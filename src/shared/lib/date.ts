@@ -35,6 +35,15 @@ export function prevDateStr(dateStr: string): string {
   return toDateStr(date.getFullYear(), date.getMonth() + 1, date.getDate())
 }
 
+/** Adds `delta` months to a 'YYYY-MM' string, handling year rollover */
+export function addMonths(yearMonth: string, delta: number): string {
+  const [y, m] = yearMonth.split('-').map(Number)
+  const total = y * 12 + (m - 1) + delta
+  const newY = Math.floor(total / 12)
+  const newM = (total % 12) + 1
+  return `${newY}-${pad2(newM)}`
+}
+
 export function todayStr(): string {
   const now = new Date()
   return toDateStr(now.getFullYear(), now.getMonth() + 1, now.getDate())

@@ -25,6 +25,7 @@ export function MonthCalendarGrid({
   onDayClick,
   weekStartWeekday,
   minDate,
+  readOnlyBefore,
 }: {
   year: number
   month: number
@@ -34,6 +35,8 @@ export function MonthCalendarGrid({
   weekStartWeekday?: number
   /** dates before this (YYYY-MM-DD) are shown muted and are never clickable */
   minDate?: string | null
+  /** dates before this (YYYY-MM-DD) are never clickable, but keep their normal colors (unlike minDate) */
+  readOnlyBefore?: string | null
 }) {
   const weeks = getMonthGrid(year, month)
 
@@ -53,7 +56,8 @@ export function MonthCalendarGrid({
             const cell = cells[date]
             const day = Number(date.slice(-2))
             const beforeMin = !!minDate && date < minDate
-            const clickable = !!onDayClick && !cell?.overrideName && !beforeMin
+            const beforeReadOnly = !!readOnlyBefore && date < readOnlyBefore
+            const clickable = !!onDayClick && !cell?.overrideName && !beforeMin && !beforeReadOnly
             const isWeekStartCol = weekStartWeekday !== undefined && di === weekStartWeekday
             const colorClass = beforeMin
               ? 'bg-gray-100 text-gray-300'

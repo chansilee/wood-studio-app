@@ -3,8 +3,9 @@ import { useAuth } from '@/shared/hooks/useAuth'
 import { OwnerScheduleEditor } from './OwnerScheduleEditor'
 import { MyScheduleView } from './MyScheduleView'
 import { CalendarOverridesManager } from './CalendarOverridesManager'
+import { SchedulingSettings } from './SchedulingSettings'
 
-type Tab = 'calendar' | 'overrides'
+type Tab = 'calendar' | 'overrides' | 'settings'
 
 export function SchedulingPage() {
   const { profile } = useAuth()
@@ -33,6 +34,14 @@ export function SchedulingPage() {
             >
               國定假日 / 特殊假管理
             </button>
+            <button
+              onClick={() => setTab('settings')}
+              className={`px-3 py-1.5 rounded text-sm ${
+                tab === 'settings' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              排班設定
+            </button>
           </div>
         )}
       </div>
@@ -43,8 +52,10 @@ export function SchedulingPage() {
         ) : (
           <MyScheduleView />
         )
-      ) : (
+      ) : tab === 'overrides' ? (
         <CalendarOverridesManager />
+      ) : (
+        <SchedulingSettings />
       )}
     </div>
   )
