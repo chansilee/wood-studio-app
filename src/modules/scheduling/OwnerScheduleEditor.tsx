@@ -351,7 +351,7 @@ export function OwnerScheduleEditor() {
             先選上面的班別狀態，再點下面日期套用該狀態，每次點擊會立即儲存為暫態
           </p>
 
-          <Legend />
+          {orgSettings?.show_color_legend && <Legend />}
           <MonthCalendarGrid
             year={year}
             month={month}

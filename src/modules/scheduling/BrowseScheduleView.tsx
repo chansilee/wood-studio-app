@@ -7,6 +7,7 @@ import { PublicationStatusLine } from './PublicationStatusLine'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { useScheduleConfirmation } from './useScheduleConfirmation'
 import { useWeekStart } from './useWeekStart'
+import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { checkWeeklyRestCompliance, daysInMonth, formatDateTime, pad2, todayStr } from '@/shared/lib/date'
 import { CALENDAR_OVERRIDE_FULL_MASK } from '@/shared/constants/roles'
 import type { Enums, Tables } from '@/shared/types/database'
@@ -32,6 +33,7 @@ export function BrowseScheduleView() {
   const { publications } = useSchedulePublications(memberId || undefined, yearMonth)
   const selectedMember = isOwner ? members.find((m) => m.id === memberId) : profile
   const { weekStartWeekday } = useWeekStart(memberId || undefined, yearMonth, selectedMember?.hire_date)
+  const { settings: orgSettings } = useOrgSettings()
 
   const latestPublication = publications[0]
   const {
@@ -153,7 +155,7 @@ export function BrowseScheduleView() {
           <PublicationStatusLine publications={publications} viewingId={viewingId} onChange={setViewingId} />
           {publications.length > 0 && (
             <>
-              <Legend />
+              {orgSettings?.show_color_legend && <Legend />}
               <MonthCalendarGrid
                 year={year}
                 month={month}

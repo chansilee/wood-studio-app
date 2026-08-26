@@ -265,6 +265,7 @@ export type Database = {
           lunch_start: string | null
           protect_review_records: boolean
           remind_month_end_publish: boolean
+          show_color_legend: boolean
           updated_at: string
         }
         Insert: {
@@ -281,6 +282,7 @@ export type Database = {
           lunch_start?: string | null
           protect_review_records?: boolean
           remind_month_end_publish?: boolean
+          show_color_legend?: boolean
           updated_at?: string
         }
         Update: {
@@ -297,6 +299,7 @@ export type Database = {
           lunch_start?: string | null
           protect_review_records?: boolean
           remind_month_end_publish?: boolean
+          show_color_legend?: boolean
           updated_at?: string
         }
         Relationships: []

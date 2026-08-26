@@ -12,7 +12,10 @@ export function SchedulingSettings() {
 
   const save = async (
     patch: Partial<
-      Pick<OrgSettings, 'block_past_scheduling' | 'remind_month_end_publish' | 'protect_review_records'>
+      Pick<
+        OrgSettings,
+        'block_past_scheduling' | 'remind_month_end_publish' | 'protect_review_records' | 'show_color_legend'
+      >
     >
   ) => {
     setSaving(true)
@@ -79,6 +82,23 @@ export function SchedulingSettings() {
           <br />
           <span className="text-xs text-gray-500">
             開啟後（預設），審閱紀錄無法刪除。關閉後，可在「審閱紀錄」頁面個別刪除紀錄，刪除後該成員會視為尚未審閱。
+          </span>
+        </span>
+      </label>
+
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={settings.show_color_legend}
+          disabled={saving}
+          onChange={(e) => save({ show_color_legend: e.target.checked })}
+          className="mt-0.5"
+        />
+        <span>
+          顯示排班顏色範例框框
+          <br />
+          <span className="text-xs text-gray-500">
+            開啟後，月曆上方會顯示「正常班」「例假」等顏色說明框框；預設關閉。
           </span>
         </span>
       </label>
