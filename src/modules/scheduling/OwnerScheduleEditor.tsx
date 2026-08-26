@@ -371,39 +371,34 @@ export function OwnerScheduleEditor() {
           )}
 
           <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
-            <p
-              className={`text-sm ${
-                publishStatus === 'none'
-                  ? 'text-red-600'
-                  : publishStatus === 'synced'
-                    ? 'text-green-700'
-                    : 'text-orange-600'
-              }`}
-            >
-              {publishStatus === 'none'
-                ? '<本月尚未公告給使用者>'
-                : publishStatus === 'synced'
-                  ? '<本月已公告且當前暫態為最新狀態>'
-                  : '<當前暫態有更新未同步於最新公告>'}
-            </p>
-            <div className="flex gap-2">
-              {publications.length > 0 && (
-                <button
-                  onClick={handleRevert}
-                  disabled={reverting}
-                  className="bg-white text-gray-700 border border-gray-300 rounded px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  {reverting ? '還原中…' : '還原回最後一版公告'}
-                </button>
+            <div>
+              {publishStatus === 'none' && (
+                <p className="text-sm text-red-600">&lt;本月尚未公告給使用者&gt;</p>
               )}
-              <button
-                onClick={handlePublish}
-                disabled={publishing || loading}
-                className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
-              >
-                {publishing ? '公告中…' : '>>公告給使用者'}
-              </button>
+              {publishStatus === 'synced' && (
+                <p className="text-sm text-green-700">&lt;本月已公告且當前編輯為最新狀態&gt;</p>
+              )}
             </div>
+            {publishStatus !== 'synced' && (
+              <div className="flex gap-2">
+                {publications.length > 0 && (
+                  <button
+                    onClick={handleRevert}
+                    disabled={reverting}
+                    className="bg-white text-gray-700 border border-gray-300 rounded px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {reverting ? '還原中…' : '還原回最後一版公告'}
+                  </button>
+                )}
+                <button
+                  onClick={handlePublish}
+                  disabled={publishing || loading}
+                  className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  {publishing ? '公告中…' : '>>公告給使用者'}
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
