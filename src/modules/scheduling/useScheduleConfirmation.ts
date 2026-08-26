@@ -2,22 +2,22 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 
 export function useScheduleConfirmation(publicationId: string | undefined) {
-  const [confirmed, setConfirmed] = useState(false)
+  const [confirmedAt, setConfirmedAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     if (!publicationId) {
-      setConfirmed(false)
+      setConfirmedAt(null)
       setLoading(false)
       return
     }
     setLoading(true)
     const { data } = await supabase
       .from('schedule_confirmations')
-      .select('id')
+      .select('confirmed_at')
       .eq('publication_id', publicationId)
       .maybeSingle()
-    setConfirmed(!!data)
+    setConfirmedAt(data?.confirmed_at ?? null)
     setLoading(false)
   }, [publicationId])
 
@@ -25,5 +25,5 @@ export function useScheduleConfirmation(publicationId: string | undefined) {
     load()
   }, [load])
 
-  return { confirmed, loading, reload: load }
+  return { confirmed: !!confirmedAt, confirmedAt, loading, reload: load }
 }

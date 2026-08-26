@@ -7,7 +7,7 @@ import { PublicationStatusLine } from './PublicationStatusLine'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { useScheduleConfirmation } from './useScheduleConfirmation'
 import { useWeekStart } from './useWeekStart'
-import { checkWeeklyRestCompliance, daysInMonth, pad2, todayStr } from '@/shared/lib/date'
+import { checkWeeklyRestCompliance, daysInMonth, formatDateTime, pad2, todayStr } from '@/shared/lib/date'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
@@ -33,6 +33,7 @@ export function BrowseScheduleView() {
   const latestPublication = publications[0]
   const {
     confirmed,
+    confirmedAt,
     loading: confirmationLoading,
     reload: reloadConfirmation,
   } = useScheduleConfirmation(latestPublication?.id)
@@ -151,25 +152,33 @@ export function BrowseScheduleView() {
                 cells={cells}
                 weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
               />
-              {showWeekStart && (
-                <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
-                  {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
-                </p>
-              )}
 
-              {isOwnSchedule && isViewingLatest && !confirmationLoading && (
-                <div className="flex justify-end mt-4">
-                  {confirmed ? (
-                    <span className="text-sm text-green-700">已確認此排班</span>
-                  ) : (
-                    <button
-                      onClick={handleConfirm}
-                      disabled={confirming}
-                      className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
-                    >
-                      {confirming ? '確認中…' : '>> 我已瀏覽並確認此排班'}
-                    </button>
-                  )}
+              {(showWeekStart || (isOwnSchedule && isViewingLatest && !confirmationLoading)) && (
+                <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+                  <div>
+                    {showWeekStart && (
+                      <p className={`text-sm ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
+                        {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    {isOwnSchedule && isViewingLatest && !confirmationLoading && (
+                      confirmed ? (
+                        <span className="text-sm text-green-700">
+                          ({confirmedAt ? formatDateTime(confirmedAt) : ''} 已確認此排班)
+                        </span>
+                      ) : (
+                        <button
+                          onClick={handleConfirm}
+                          disabled={confirming}
+                          className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+                        >
+                          {confirming ? '確認中…' : '>> 我已瀏覽並確認此排班'}
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
               )}
             </>
