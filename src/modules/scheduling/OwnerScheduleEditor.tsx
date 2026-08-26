@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
@@ -7,7 +7,7 @@ import { Legend } from './Legend'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { useWeekStart } from './useWeekStart'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
-import { checkWeeklyRestCompliance, daysInMonth, pad2, todayStr } from '@/shared/lib/date'
+import { checkWeeklyRestCompliance, daysInMonth, defaultSchedulingYearMonth, pad2, todayStr } from '@/shared/lib/date'
 import { CALENDAR_OVERRIDE_FULL_MASK, SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
 import type { Enums, Tables } from '@/shared/types/database'
 
@@ -52,6 +52,13 @@ export function OwnerScheduleEditor() {
     selectedMember?.hire_date
   )
   const { settings: orgSettings } = useOrgSettings()
+  const appliedDefaultMonth = useRef(false)
+
+  useEffect(() => {
+    if (appliedDefaultMonth.current || !orgSettings) return
+    appliedDefaultMonth.current = true
+    setYearMonth(defaultSchedulingYearMonth(orgSettings.default_next_month_after_25))
+  }, [orgSettings])
 
   useEffect(() => {
     supabase

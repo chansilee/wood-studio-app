@@ -255,6 +255,8 @@ export type Database = {
           allow_delete_records: boolean
           block_past_scheduling: boolean
           company_lat: number | null
+          default_last_month_before_5: boolean
+          default_next_month_after_25: boolean
           company_lng: number | null
           dinner_end: string | null
           dinner_start: string | null
@@ -273,6 +275,8 @@ export type Database = {
           allow_delete_records?: boolean
           block_past_scheduling?: boolean
           company_lat?: number | null
+          default_last_month_before_5?: boolean
+          default_next_month_after_25?: boolean
           company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
@@ -291,6 +295,8 @@ export type Database = {
           allow_delete_records?: boolean
           block_past_scheduling?: boolean
           company_lat?: number | null
+          default_last_month_before_5?: boolean
+          default_next_month_after_25?: boolean
           company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null

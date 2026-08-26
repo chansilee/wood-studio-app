@@ -49,6 +49,22 @@ export function todayStr(): string {
   return toDateStr(now.getFullYear(), now.getMonth() + 1, now.getDate())
 }
 
+/** Default 'YYYY-MM' for 排班系統: next month once past the 25th, when enabled via org_settings */
+export function defaultSchedulingYearMonth(enabled: boolean): string {
+  const today = todayStr()
+  const day = Number(today.slice(8, 10))
+  const base = today.slice(0, 7)
+  return enabled && day >= 25 ? addMonths(base, 1) : base
+}
+
+/** Default 'YYYY-MM' for 月結系統: last month through the 5th, when enabled via org_settings */
+export function defaultSettlementYearMonth(enabled: boolean): string {
+  const today = todayStr()
+  const day = Number(today.slice(8, 10))
+  const base = today.slice(0, 7)
+  return enabled && day <= 5 ? addMonths(base, -1) : base
+}
+
 /** Formats an ISO timestamp as 'YYYY/MM/DD HH:mm:ss' in the viewer's local time */
 export function formatDateTime(iso: string): string {
   const d = new Date(iso)

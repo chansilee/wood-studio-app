@@ -1,11 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
+import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { useSchedulePublications, type PublicationSnapshotEntry } from '@/modules/scheduling/usePublications'
 import { formatHours } from '@/modules/leave/leaveDisplay'
 import { MonthSelector } from '@/shared/components/MonthSelector'
 import { SettlementArchive } from './SettlementArchive'
-import { addMonths, daysInMonth, formatDateSlash, formatDateTime, pad2, todayStr } from '@/shared/lib/date'
+import { SettlementSettings } from './SettlementSettings'
+import {
+  addMonths,
+  daysInMonth,
+  defaultSettlementYearMonth,
+  formatDateSlash,
+  formatDateTime,
+  pad2,
+  todayStr,
+} from '@/shared/lib/date'
 import type { Json, Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -24,7 +34,7 @@ interface SettlementRow {
 export function MonthlySettlementPage() {
   const { profile } = useAuth()
   const isOwner = profile?.role === 'owner'
-  const [tab, setTab] = useState<'current' | 'archive'>('current')
+  const [tab, setTab] = useState<'current' | 'archive' | 'settings'>('current')
   const [members, setMembers] = useState<Profile[]>([])
   const [selectedMemberId, setSelectedMemberId] = useState('')
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
@@ -37,6 +47,14 @@ export function MonthlySettlementPage() {
   const memberId = isOwner ? selectedMemberId : profile?.id ?? ''
   const { publications } = useSchedulePublications(memberId || undefined, yearMonth)
   const latestSnapshot = publications[0]
+  const { settings: orgSettings } = useOrgSettings()
+  const appliedDefaultMonth = useRef(false)
+
+  useEffect(() => {
+    if (appliedDefaultMonth.current || !orgSettings) return
+    appliedDefaultMonth.current = true
+    setYearMonth(defaultSettlementYearMonth(orgSettings.default_last_month_before_5))
+  }, [orgSettings])
 
   useEffect(() => {
     if (!isOwner || !profile) return
@@ -249,12 +267,22 @@ export function MonthlySettlementPage() {
             >
               已過月結結算
             </button>
+            <button
+              onClick={() => setTab('settings')}
+              className={`px-3 py-1.5 rounded text-sm ${
+                tab === 'settings' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              月結設定
+            </button>
           </div>
         )}
       </div>
 
       {tab === 'archive' ? (
         <SettlementArchive />
+      ) : tab === 'settings' ? (
+        <SettlementSettings />
       ) : (
         <>
           <div className="flex flex-wrap items-end gap-3 mb-4">

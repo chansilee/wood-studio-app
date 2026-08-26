@@ -19,6 +19,7 @@ export function SchedulingSettings() {
         | 'protect_review_records'
         | 'show_color_legend'
         | 'enable_week_start_adjust'
+        | 'default_next_month_after_25'
       >
     >
   ) => {
@@ -120,6 +121,23 @@ export function SchedulingSettings() {
           <br />
           <span className="text-xs text-gray-500">
             開啟後（預設），排班模式月曆下方會顯示「切換周起始」的調整列；關閉後則隱藏該列。
+          </span>
+        </span>
+      </label>
+
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={settings.default_next_month_after_25}
+          disabled={saving}
+          onChange={(e) => save({ default_next_month_after_25: e.target.checked })}
+          className="mt-0.5"
+        />
+        <span>
+          當月 25 號以後預設顯示下個月排班
+          <br />
+          <span className="text-xs text-gray-500">
+            開啟後（預設），每月 25 號起，[排班模式]／[瀏覽模式]一進入會預設顯示下個月的班表。關閉後，到月底都仍顯示當月。
           </span>
         </span>
       </label>
