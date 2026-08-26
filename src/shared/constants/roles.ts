@@ -23,6 +23,17 @@ export const CALENDAR_OVERRIDE_LABELS: Record<Enums<'calendar_override_type'>, s
   other: '其他',
 }
 
+/**
+ * Whether this override type fully masks the day (no schedule possible, no attendance).
+ * 天災假/選舉假 are advisory-only: the day keeps its normal shift editing/attendance behavior.
+ */
+export const CALENDAR_OVERRIDE_FULL_MASK: Record<Enums<'calendar_override_type'>, boolean> = {
+  national_holiday: true,
+  disaster_leave: false,
+  election_leave: false,
+  other: true,
+}
+
 export const WORK_LOG_TYPE_LABELS: Record<Enums<'work_log_type'>, string> = {
   production: '製作',
   learning: '學習',

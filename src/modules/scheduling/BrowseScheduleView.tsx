@@ -8,10 +8,13 @@ import { useSchedulePublications, type PublicationSnapshotEntry } from './usePub
 import { useScheduleConfirmation } from './useScheduleConfirmation'
 import { useWeekStart } from './useWeekStart'
 import { checkWeeklyRestCompliance, daysInMonth, formatDateTime, pad2, todayStr } from '@/shared/lib/date'
+import { CALENDAR_OVERRIDE_FULL_MASK } from '@/shared/constants/roles'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
+type OverrideType = Enums<'calendar_override_type'>
 type Profile = Tables<'profiles'>
+type OverrideInfo = { name: string; type: OverrideType }
 
 export function BrowseScheduleView() {
   const { profile } = useAuth()
@@ -19,7 +22,7 @@ export function BrowseScheduleView() {
   const [members, setMembers] = useState<Profile[]>([])
   const [selectedMemberId, setSelectedMemberId] = useState('')
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
-  const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
+  const [overridesMap, setOverridesMap] = useState<Record<string, OverrideInfo>>({})
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -65,12 +68,12 @@ export function BrowseScheduleView() {
 
     const { data: overrideRows } = await supabase
       .from('calendar_overrides')
-      .select('override_date, name')
+      .select('override_date, name, type')
       .gte('override_date', firstDay)
       .lte('override_date', lastDay)
 
-    const overrides: Record<string, string> = {}
-    for (const o of overrideRows ?? []) overrides[o.override_date] = o.name
+    const overrides: Record<string, OverrideInfo> = {}
+    for (const o of overrideRows ?? []) overrides[o.override_date] = { name: o.name, type: o.type }
     setOverridesMap(overrides)
 
     setLoading(false)
@@ -89,8 +92,13 @@ export function BrowseScheduleView() {
   for (const [date, status] of Object.entries(displayStatus)) {
     cells[date] = { status }
   }
-  for (const [date, name] of Object.entries(overridesMap)) {
-    cells[date] = { status: 'unscheduled', overrideName: name }
+  for (const [date, ov] of Object.entries(overridesMap)) {
+    const fullMask = CALENDAR_OVERRIDE_FULL_MASK[ov.type]
+    cells[date] = {
+      status: fullMask ? 'unscheduled' : (cells[date]?.status ?? 'unscheduled'),
+      overrideName: ov.name,
+      overrideFullMask: fullMask,
+    }
   }
 
   const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled

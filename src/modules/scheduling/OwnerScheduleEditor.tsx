@@ -7,11 +7,13 @@ import { useSchedulePublications, type PublicationSnapshotEntry } from './usePub
 import { useWeekStart } from './useWeekStart'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { checkWeeklyRestCompliance, daysInMonth, pad2, todayStr } from '@/shared/lib/date'
-import { SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
+import { CALENDAR_OVERRIDE_FULL_MASK, SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
+type OverrideType = Enums<'calendar_override_type'>
 type Profile = Tables<'profiles'>
+type OverrideInfo = { name: string; type: OverrideType }
 
 const BRUSH_OPTIONS: ShiftStatus[] = ['normal', 'regular_off', 'special_off', 'unscheduled']
 const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六']
@@ -29,7 +31,7 @@ export function OwnerScheduleEditor() {
   const [selectedMemberId, setSelectedMemberId] = useState<string>('')
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
   const [savedStatus, setSavedStatus] = useState<Record<string, ShiftStatus>>({})
-  const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
+  const [overridesMap, setOverridesMap] = useState<Record<string, OverrideInfo>>({})
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
   const [reverting, setReverting] = useState(false)
@@ -136,13 +138,13 @@ export function OwnerScheduleEditor() {
         .lte('work_date', lastDay),
       supabase
         .from('calendar_overrides')
-        .select('override_date, name')
+        .select('override_date, name, type')
         .gte('override_date', firstDay)
         .lte('override_date', lastDay),
     ])
 
-    const overrides: Record<string, string> = {}
-    for (const o of overrideRows ?? []) overrides[o.override_date] = o.name
+    const overrides: Record<string, OverrideInfo> = {}
+    for (const o of overrideRows ?? []) overrides[o.override_date] = { name: o.name, type: o.type }
     setOverridesMap(overrides)
 
     const statusMap: Record<string, ShiftStatus> = {}
@@ -152,8 +154,13 @@ export function OwnerScheduleEditor() {
     setLoading(false)
   }
 
+  const isFullMaskDate = (date: string) => {
+    const ov = overridesMap[date]
+    return !!ov && CALENDAR_OVERRIDE_FULL_MASK[ov.type]
+  }
+
   const applyBrush = async (date: string) => {
-    if (overridesMap[date]) return
+    if (isFullMaskDate(date)) return
     if (selectedMember?.hire_date && date < selectedMember.hire_date) return
     if (orgSettings?.block_past_scheduling && date < todayStr()) return
     if (!session || !selectedMemberId) return
@@ -182,7 +189,7 @@ export function OwnerScheduleEditor() {
     setMessage(null)
 
     const rows = Object.entries(savedStatus)
-      .filter(([date]) => !overridesMap[date])
+      .filter(([date]) => !isFullMaskDate(date))
       .map(([work_date, status]) => ({ work_date, status }))
 
     const { error } = await supabase.from('schedule_publications').insert({
@@ -204,15 +211,20 @@ export function OwnerScheduleEditor() {
   for (const [date, status] of Object.entries(savedStatus)) {
     cells[date] = { status }
   }
-  for (const [date, name] of Object.entries(overridesMap)) {
-    cells[date] = { status: 'unscheduled', overrideName: name }
+  for (const [date, ov] of Object.entries(overridesMap)) {
+    const fullMask = CALENDAR_OVERRIDE_FULL_MASK[ov.type]
+    cells[date] = {
+      status: fullMask ? 'unscheduled' : (cells[date]?.status ?? 'unscheduled'),
+      overrideName: ov.name,
+      overrideFullMask: fullMask,
+    }
   }
 
   const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled
   const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, savedStatus)
 
   const currentSnapshotMap = Object.fromEntries(
-    Object.entries(savedStatus).filter(([date]) => !overridesMap[date])
+    Object.entries(savedStatus).filter(([date]) => !isFullMaskDate(date))
   )
   const latestPub = publications[0]
   const latestPubMap = latestPub

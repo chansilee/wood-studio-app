@@ -7,6 +7,8 @@ type ShiftStatus = Enums<'shift_status'>
 export interface DayCell {
   status: ShiftStatus
   overrideName?: string
+  /** true = fully masked (no schedule/attendance possible); false = advisory-only, still editable */
+  overrideFullMask?: boolean
 }
 
 const STATUS_COLOR: Record<ShiftStatus, string> = {
@@ -57,11 +59,12 @@ export function MonthCalendarGrid({
             const day = Number(date.slice(-2))
             const beforeMin = !!minDate && date < minDate
             const beforeReadOnly = !!readOnlyBefore && date < readOnlyBefore
-            const clickable = !!onDayClick && !cell?.overrideName && !beforeMin && !beforeReadOnly
+            const isFullMasked = !!cell?.overrideName && !!cell?.overrideFullMask
+            const clickable = !!onDayClick && !isFullMasked && !beforeMin && !beforeReadOnly
             const isWeekStartCol = weekStartWeekday !== undefined && di === weekStartWeekday
             const colorClass = beforeMin
               ? 'bg-gray-100 text-gray-300'
-              : cell?.overrideName
+              : isFullMasked
                 ? 'bg-red-50 text-red-700'
                 : STATUS_COLOR[cell?.status ?? 'unscheduled']
             return (
@@ -76,7 +79,20 @@ export function MonthCalendarGrid({
               >
                 <span className="text-xs text-gray-500">{day}</span>
                 <span className="text-xs font-medium mt-1 break-words">
-                  {beforeMin ? '' : cell?.overrideName ?? SHIFT_STATUS_LABELS[cell?.status ?? 'unscheduled']}
+                  {beforeMin ? (
+                    ''
+                  ) : cell?.overrideName ? (
+                    isFullMasked ? (
+                      cell.overrideName
+                    ) : (
+                      <>
+                        {cell.overrideName}
+                        <br />原：{SHIFT_STATUS_LABELS[cell?.status ?? 'unscheduled']}
+                      </>
+                    )
+                  ) : (
+                    SHIFT_STATUS_LABELS[cell?.status ?? 'unscheduled']
+                  )}
                 </span>
               </button>
             )
