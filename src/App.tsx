@@ -10,6 +10,7 @@ import { MembersPage } from '@/modules/members/MembersPage'
 import { SchedulingPage } from '@/modules/scheduling/SchedulingPage'
 import { AttendancePage } from '@/modules/attendance/AttendancePage'
 import { LeavePage } from '@/modules/leave/LeavePage'
+import { MonthlySettlementPage } from '@/modules/settlement/MonthlySettlementPage'
 import { JournalPage } from '@/modules/journal/JournalPage'
 import { ProductsPage } from '@/modules/products/ProductsPage'
 
@@ -49,6 +50,14 @@ export default function App() {
               element={
                 <RequireRole allow={['owner', 'staff', 'apprentice']}>
                   <LeavePage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/settlement"
+              element={
+                <RequireRole allow={['owner', 'staff', 'apprentice']}>
+                  <MonthlySettlementPage />
                 </RequireRole>
               }
             />

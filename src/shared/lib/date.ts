@@ -52,6 +52,12 @@ export function formatDateTime(iso: string): string {
   return `${y}/${mo}/${da} ${h}:${mi}:${s}`
 }
 
+/** Formats 'YYYY-MM-DD' as 'YYYY/M/D' (no leading zeros on month/day) */
+export function formatDateSlash(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return `${y}/${m}/${d}`
+}
+
 /** 0=Sunday..6=Saturday, matching JS Date#getDay() */
 export function weekdayFromDateStr(dateStr: string): number {
   const [y, m, d] = dateStr.split('-').map(Number)
