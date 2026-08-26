@@ -1,30 +1,39 @@
 import { useState } from 'react'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { OwnerScheduleEditor } from './OwnerScheduleEditor'
-import { MyScheduleView } from './MyScheduleView'
+import { BrowseScheduleView } from './BrowseScheduleView'
 import { CalendarOverridesManager } from './CalendarOverridesManager'
 import { SchedulingSettings } from './SchedulingSettings'
 
-type Tab = 'calendar' | 'overrides' | 'settings'
+type Tab = 'edit' | 'browse' | 'overrides' | 'settings'
 
 export function SchedulingPage() {
   const { profile } = useAuth()
   const isOwner = profile?.role === 'owner'
-  const [tab, setTab] = useState<Tab>('calendar')
+  const [tab, setTab] = useState<Tab>('edit')
+  const effectiveTab: Tab = isOwner ? tab : 'browse'
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h1 className="text-xl font-semibold">排班系統</h1>
         {isOwner && (
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-wrap">
             <button
-              onClick={() => setTab('calendar')}
+              onClick={() => setTab('edit')}
               className={`px-3 py-1.5 rounded text-sm ${
-                tab === 'calendar' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+                tab === 'edit' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
               }`}
             >
-              排班月曆
+              排班模式
+            </button>
+            <button
+              onClick={() => setTab('browse')}
+              className={`px-3 py-1.5 rounded text-sm ${
+                tab === 'browse' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              瀏覽模式
             </button>
             <button
               onClick={() => setTab('overrides')}
@@ -46,13 +55,11 @@ export function SchedulingPage() {
         )}
       </div>
 
-      {tab === 'calendar' ? (
-        isOwner ? (
-          <OwnerScheduleEditor />
-        ) : (
-          <MyScheduleView />
-        )
-      ) : tab === 'overrides' ? (
+      {effectiveTab === 'edit' ? (
+        <OwnerScheduleEditor />
+      ) : effectiveTab === 'browse' ? (
+        <BrowseScheduleView />
+      ) : effectiveTab === 'overrides' ? (
         <CalendarOverridesManager />
       ) : (
         <SchedulingSettings />

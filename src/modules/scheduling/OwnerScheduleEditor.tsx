@@ -3,7 +3,6 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
 import { Legend } from './Legend'
-import { PublicationBar } from './PublicationBar'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { useWeekStart } from './useWeekStart'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
@@ -36,7 +35,6 @@ export function OwnerScheduleEditor() {
   const [reverting, setReverting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [brush, setBrush] = useState<ShiftStatus>('normal')
-  const [viewingId, setViewingId] = useState<string | 'live'>('live')
 
   const [year, month] = yearMonth.split('-').map(Number)
   const { publications, reload: reloadPublications } = useSchedulePublications(
@@ -67,7 +65,6 @@ export function OwnerScheduleEditor() {
 
   useEffect(() => {
     if (!selectedMemberId) return
-    setViewingId('live')
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMemberId, yearMonth])
@@ -157,7 +154,6 @@ export function OwnerScheduleEditor() {
 
   const applyBrush = async (date: string) => {
     if (overridesMap[date]) return
-    if (viewingId !== 'live') return
     if (selectedMember?.hire_date && date < selectedMember.hire_date) return
     if (orgSettings?.block_past_scheduling && date < todayStr()) return
     if (!session || !selectedMemberId) return
@@ -204,28 +200,16 @@ export function OwnerScheduleEditor() {
     reloadPublications()
   }
 
-  const viewingPublication = viewingId === 'live' ? null : publications.find((p) => p.id === viewingId)
-  const displayStatus: Record<string, ShiftStatus> =
-    viewingId === 'live'
-      ? savedStatus
-      : Object.fromEntries(
-          ((viewingPublication?.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [
-            e.work_date,
-            e.status,
-          ])
-        )
-
   const cells: Record<string, DayCell> = {}
-  for (const [date, status] of Object.entries(displayStatus)) {
+  for (const [date, status] of Object.entries(savedStatus)) {
     cells[date] = { status }
   }
   for (const [date, name] of Object.entries(overridesMap)) {
     cells[date] = { status: 'unscheduled', overrideName: name }
   }
 
-  const editing = viewingId === 'live'
   const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled
-  const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
+  const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, savedStatus)
 
   const currentSnapshotMap = Object.fromEntries(
     Object.entries(savedStatus).filter(([date]) => !overridesMap[date])
@@ -321,24 +305,27 @@ export function OwnerScheduleEditor() {
         <div>載入中…</div>
       ) : (
         <>
-          <PublicationBar
-            publications={publications}
-            viewingId={viewingId}
-            onChange={setViewingId}
-            editable
-            onRevert={handleRevert}
-            reverting={reverting}
-          />
+          <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
+            <span className="text-gray-700">目前狀態：暫態（可編輯）</span>
+            {publications.length > 0 && (
+              <button
+                onClick={handleRevert}
+                disabled={reverting}
+                className="text-xs border rounded px-2 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {reverting ? '還原中…' : '還原回最新公告狀態'}
+              </button>
+            )}
+          </div>
 
           <div className="flex flex-wrap gap-2 mb-2">
             {BRUSH_OPTIONS.map((s) => (
               <button
                 key={s}
                 type="button"
-                disabled={!editing}
                 aria-pressed={brush === s}
                 onClick={() => setBrush(s)}
-                className={`px-3 py-1.5 rounded text-sm border transition disabled:opacity-40 ${
+                className={`px-3 py-1.5 rounded text-sm border transition ${
                   brush === s
                     ? 'bg-black text-white border-black ring-2 ring-offset-1 ring-black'
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -349,7 +336,7 @@ export function OwnerScheduleEditor() {
             ))}
           </div>
           <p className="text-xs text-gray-500 mb-2">
-            {editing ? '先選上面的班別狀態，再點下面日期套用該狀態，每次點擊會立即儲存為暫態' : ''}
+            先選上面的班別狀態，再點下面日期套用該狀態，每次點擊會立即儲存為暫態
           </p>
 
           <Legend />
@@ -357,7 +344,7 @@ export function OwnerScheduleEditor() {
             year={year}
             month={month}
             cells={cells}
-            onDayClick={editing ? applyBrush : undefined}
+            onDayClick={applyBrush}
             weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
             minDate={selectedMember?.hire_date}
             readOnlyBefore={orgSettings?.block_past_scheduling ? todayStr() : undefined}
@@ -369,15 +356,13 @@ export function OwnerScheduleEditor() {
                 <span className="text-gray-600">切換周起始：{WEEKDAY_NAMES[weekStartWeekday]}</span>
                 <button
                   onClick={() => shiftWeekStart(-1, session?.user.id)}
-                  disabled={!editing}
-                  className="border rounded px-2 py-0.5 disabled:opacity-40"
+                  className="border rounded px-2 py-0.5"
                 >
                   &lt;
                 </button>
                 <button
                   onClick={() => shiftWeekStart(1, session?.user.id)}
-                  disabled={!editing}
-                  className="border rounded px-2 py-0.5 disabled:opacity-40"
+                  className="border rounded px-2 py-0.5"
                 >
                   &gt;
                 </button>
@@ -389,32 +374,30 @@ export function OwnerScheduleEditor() {
             </>
           )}
 
-          {editing && (
-            <div className="mt-4">
-              <p
-                className={`text-sm mb-1 ${
-                  publishStatus === 'none'
-                    ? 'text-red-600'
-                    : publishStatus === 'synced'
-                      ? 'text-green-700'
-                      : 'text-orange-600'
-                }`}
-              >
-                {publishStatus === 'none'
-                  ? '<本月尚未公告給使用者>'
+          <div className="mt-4">
+            <p
+              className={`text-sm mb-1 ${
+                publishStatus === 'none'
+                  ? 'text-red-600'
                   : publishStatus === 'synced'
-                    ? '<本月已公告且當前暫態為最新狀態>'
-                    : '<當前暫態有更新未同步於最新公告>'}
-              </p>
-              <button
-                onClick={handlePublish}
-                disabled={publishing || loading}
-                className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
-              >
-                {publishing ? '公告中…' : '公告給使用者'}
-              </button>
-            </div>
-          )}
+                    ? 'text-green-700'
+                    : 'text-orange-600'
+              }`}
+            >
+              {publishStatus === 'none'
+                ? '<本月尚未公告給使用者>'
+                : publishStatus === 'synced'
+                  ? '<本月已公告且當前暫態為最新狀態>'
+                  : '<當前暫態有更新未同步於最新公告>'}
+            </p>
+            <button
+              onClick={handlePublish}
+              disabled={publishing || loading}
+              className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {publishing ? '公告中…' : '公告給使用者'}
+            </button>
+          </div>
         </>
       )}
     </div>

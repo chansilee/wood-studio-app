@@ -3,31 +3,50 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
 import { Legend } from './Legend'
-import { PublicationBar } from './PublicationBar'
+import { PublicationStatusLine } from './PublicationStatusLine'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { useWeekStart } from './useWeekStart'
 import { checkWeeklyRestCompliance, daysInMonth, pad2, todayStr } from '@/shared/lib/date'
-import type { Enums } from '@/shared/types/database'
+import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
+type Profile = Tables<'profiles'>
 
-export function MyScheduleView() {
+export function BrowseScheduleView() {
   const { profile } = useAuth()
+  const isOwner = profile?.role === 'owner'
+  const [members, setMembers] = useState<Profile[]>([])
+  const [selectedMemberId, setSelectedMemberId] = useState('')
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
   const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [viewingId, setViewingId] = useState<string | 'live'>('live')
+  const [viewingId, setViewingId] = useState<string | null>(null)
 
   const [year, month] = yearMonth.split('-').map(Number)
-  const { publications } = useSchedulePublications(profile?.id, yearMonth)
-  const { weekStartWeekday } = useWeekStart(profile?.id, yearMonth, profile?.hire_date)
+  const memberId = isOwner ? selectedMemberId : (profile?.id ?? '')
+  const { publications } = useSchedulePublications(memberId || undefined, yearMonth)
+  const selectedMember = isOwner ? members.find((m) => m.id === memberId) : profile
+  const { weekStartWeekday } = useWeekStart(memberId || undefined, yearMonth, selectedMember?.hire_date)
 
   useEffect(() => {
-    if (!profile) return
-    setViewingId('live')
+    if (!isOwner || !profile) return
+    supabase
+      .from('profiles')
+      .select('*')
+      .neq('role', 'guest')
+      .order('display_name')
+      .then(({ data }) => {
+        setMembers(data ?? [])
+        setSelectedMemberId((prev) => prev || profile.id)
+      })
+  }, [isOwner, profile])
+
+  useEffect(() => {
+    if (!memberId) return
+    setViewingId(null)
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id, yearMonth])
+  }, [memberId, yearMonth])
 
   const load = async () => {
     setLoading(true)
@@ -47,9 +66,7 @@ export function MyScheduleView() {
     setLoading(false)
   }
 
-  // "目前" always means the latest announced publication — an owner's unpublished
-  // 暫態 (draft) is never visible here until they click 公告給使用者.
-  const activePublication = viewingId === 'live' ? publications[0] : publications.find((p) => p.id === viewingId)
+  const activePublication = viewingId ? publications.find((p) => p.id === viewingId) : publications[0]
   const displayStatus: Record<string, ShiftStatus> = Object.fromEntries(
     ((activePublication?.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [
       e.work_date,
@@ -65,25 +82,45 @@ export function MyScheduleView() {
     cells[date] = { status: 'unscheduled', overrideName: name }
   }
 
-  const showWeekStart = !!profile?.hire_date && !!profile?.weekly_rest_check_enabled
+  const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled
   const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
-        <label className="text-sm text-gray-600">月份</label>
-        <input
-          type="month"
-          value={yearMonth}
-          onChange={(e) => setYearMonth(e.target.value)}
-          className="border rounded px-2 py-1"
-        />
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        {isOwner && (
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">成員</label>
+            <select
+              value={selectedMemberId}
+              onChange={(e) => setSelectedMemberId(e.target.value)}
+              className="border rounded px-2 py-1"
+            >
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.display_name}
+                  {m.id === profile?.id ? '（我）' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div>
+          <label className="block text-xs text-gray-600 mb-1">月份</label>
+          <input
+            type="month"
+            value={yearMonth}
+            onChange={(e) => setYearMonth(e.target.value)}
+            className="border rounded px-2 py-1"
+          />
+        </div>
       </div>
+
       {loading ? (
         <div>載入中…</div>
       ) : (
         <>
-          <PublicationBar publications={publications} viewingId={viewingId} onChange={setViewingId} />
+          <PublicationStatusLine publications={publications} viewingId={viewingId} onChange={setViewingId} />
           <Legend />
           <MonthCalendarGrid
             year={year}
