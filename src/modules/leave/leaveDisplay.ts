@@ -11,7 +11,10 @@ export interface LeaveDisplayLeaveRequest {
 }
 
 export interface LeaveDisplayResult {
-  label: string
+  /** the declared leave itself, e.g. "事假 全天" or "病假4小時" */
+  primaryLabel: string
+  /** status/outcome line, e.g. "<審核中>" or "正常出勤2.02小時+病假4小時"; absent once an approved full-day leave has nothing left to show */
+  secondaryLabel?: string
   colorClass: string
   clickable: boolean
   /** whether the raw attendance is treated as covered once leave is factored in */
@@ -36,18 +39,28 @@ export function computeLeaveDisplay({
   leaveRequest?: LeaveDisplayLeaveRequest
 }): LeaveDisplayResult {
   if (!isPast) {
-    return { label: '', colorClass: 'bg-white text-gray-300', clickable: false }
+    return { primaryLabel: '', colorClass: 'bg-white text-gray-300', clickable: false }
   }
 
   if (leaveRequest) {
+    const typeName = leaveRequest.leave_type_name ?? '假別'
+    const durationLabel =
+      leaveRequest.duration_type === 'full_day'
+        ? `${typeName} 全天`
+        : `${typeName}${formatHours(leaveRequest.hours)}小時`
+
     if (leaveRequest.status === 'pending') {
-      return { label: '審核中', colorClass: 'bg-yellow-50 text-yellow-800', clickable: true }
+      return {
+        primaryLabel: durationLabel,
+        secondaryLabel: '<審核中>',
+        colorClass: 'bg-yellow-50 text-yellow-800',
+        clickable: true,
+      }
     }
     if (leaveRequest.status === 'approved') {
-      const typeName = leaveRequest.leave_type_name ?? '假別'
       if (leaveRequest.duration_type === 'full_day') {
         return {
-          label: `全天${typeName}`,
+          primaryLabel: durationLabel,
           colorClass: 'bg-blue-50 text-blue-800',
           clickable: true,
           qualifies: true,
@@ -57,7 +70,8 @@ export function computeLeaveDisplay({
       const leaveHours = Number(leaveRequest.hours ?? 0)
       const qualifies = raw + leaveHours >= Number(defaultDailyHours)
       return {
-        label: `${qualifies ? '正常' : '異常'}出勤${formatHours(raw)}小時+${formatHours(leaveHours)}小時${typeName}`,
+        primaryLabel: durationLabel,
+        secondaryLabel: `${qualifies ? '正常' : '異常'}出勤${formatHours(raw)}小時+${durationLabel}`,
         colorClass: qualifies ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800',
         clickable: true,
         qualifies,
@@ -67,7 +81,7 @@ export function computeLeaveDisplay({
   }
 
   return {
-    label: `${rawStatus === 'normal' ? '正常' : '異常'}出勤${formatHours(rawHours)}小時`,
+    primaryLabel: `${rawStatus === 'normal' ? '正常' : '異常'}出勤${formatHours(rawHours)}小時`,
     colorClass: rawStatus === 'normal' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800',
     clickable: rawStatus === 'abnormal' || !!leaveRequest,
     qualifies: rawStatus === 'normal',

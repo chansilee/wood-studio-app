@@ -93,6 +93,43 @@ export function HomePage() {
         }
       }
 
+      // 3. owner-only: pending leave requests awaiting review, grouped by member + month
+      if (isOwner) {
+        const { data: pendingLeaves } = await supabase
+          .from('leave_requests')
+          .select('member_id, leave_date')
+          .eq('status', 'pending')
+
+        if (pendingLeaves && pendingLeaves.length > 0) {
+          const memberIds = Array.from(new Set(pendingLeaves.map((r) => r.member_id)))
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('id, display_name')
+            .in('id', memberIds)
+          const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+
+          const groups: Record<string, { memberId: string; month: string; count: number }> = {}
+          for (const r of pendingLeaves) {
+            const month = r.leave_date.slice(0, 7)
+            const key = `${r.member_id}-${month}`
+            groups[key] ??= { memberId: r.member_id, month, count: 0 }
+            groups[key].count += 1
+          }
+
+          const now = Date.now()
+          for (const g of Object.values(groups)) {
+            const monthNum = Number(g.month.split('-')[1])
+            const name = nameMap[g.memberId] ?? '未知成員'
+            items.push({
+              id: `leave-pending-${g.memberId}-${g.month}`,
+              text: `你有[${g.count}]筆${name} - [${monthNum}月]待審核的請假，請至請假系統-該成員頁面進行審核`,
+              colorClass: 'text-red-600 font-medium',
+              sortKey: now,
+            })
+          }
+        }
+      }
+
       items.sort((a, b) => b.sortKey - a.sortKey)
       setNotifications(items)
     }

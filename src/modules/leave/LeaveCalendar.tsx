@@ -224,7 +224,7 @@ export function LeaveCalendar() {
                 const leaveReq = leaveMap[date]
                 const rawStatus = (attendanceMap[date]?.status as 'normal' | 'abnormal') ?? 'abnormal'
 
-                const { label, colorClass, clickable } = computeLeaveDisplay({
+                const { primaryLabel, secondaryLabel, colorClass, clickable } = computeLeaveDisplay({
                   isPast,
                   rawStatus,
                   rawHours: attendanceMap[date]?.hours ?? null,
@@ -243,7 +243,12 @@ export function LeaveCalendar() {
                     }`}
                   >
                     <span className="text-xs text-gray-500">{day}</span>
-                    {label && <span className="text-[11px] font-medium mt-1 break-words">{label}</span>}
+                    {primaryLabel && (
+                      <span className="text-[11px] font-medium mt-1 break-words">{primaryLabel}</span>
+                    )}
+                    {secondaryLabel && (
+                      <span className="text-[11px] font-medium break-words">{secondaryLabel}</span>
+                    )}
                   </button>
                 )
               })}

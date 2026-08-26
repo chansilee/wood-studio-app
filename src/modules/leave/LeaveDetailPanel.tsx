@@ -129,22 +129,30 @@ export function LeaveDetailPanel({
               ? LEAVE_DURATION_TYPE_LABELS.full_day
               : `${leaveRequest.hours} 小時`}
           </p>
-          {leaveRequest.status === 'approved' && (
-            <p className="text-xs text-gray-500">
-              顯示為：
-              <span className="font-medium">
-                {
-                  computeLeaveDisplay({
-                    isPast: true,
-                    rawStatus,
-                    rawHours,
-                    defaultDailyHours,
-                    leaveRequest,
-                  }).label
-                }
-              </span>
-            </p>
-          )}
+          {leaveRequest.status === 'approved' &&
+            (() => {
+              const display = computeLeaveDisplay({
+                isPast: true,
+                rawStatus,
+                rawHours,
+                defaultDailyHours,
+                leaveRequest,
+              })
+              return (
+                <p className="text-xs text-gray-500">
+                  顯示為：
+                  <span className="font-medium">
+                    {display.primaryLabel}
+                    {display.secondaryLabel && (
+                      <>
+                        <br />
+                        {display.secondaryLabel}
+                      </>
+                    )}
+                  </span>
+                </p>
+              )
+            })()}
           {leaveRequest.duration_type === 'partial' && (
             <p className="text-xs text-gray-500">
               原出勤時數 {formatHours(rawHours)} + 請假 {leaveRequest.hours} 小時 ={' '}
