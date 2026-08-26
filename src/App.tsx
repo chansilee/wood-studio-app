@@ -4,6 +4,7 @@ import { RequireAuth } from '@/shared/components/RequireAuth'
 import { RequireRole } from '@/shared/components/RequireRole'
 import { Layout } from '@/app/Layout'
 import { HomePage } from '@/app/HomePage'
+import { NotificationHelpPage } from '@/app/NotificationHelpPage'
 import { LoginPage } from '@/modules/auth/LoginPage'
 import { RegisterPage } from '@/modules/auth/RegisterPage'
 import { MembersPage } from '@/modules/members/MembersPage'
@@ -29,6 +30,14 @@ export default function App() {
             }
           >
             <Route path="/" element={<HomePage />} />
+            <Route
+              path="/notifications-help"
+              element={
+                <RequireRole allow={['owner', 'staff', 'apprentice']}>
+                  <NotificationHelpPage />
+                </RequireRole>
+              }
+            />
             <Route
               path="/scheduling"
               element={

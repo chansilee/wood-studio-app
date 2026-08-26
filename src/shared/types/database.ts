@@ -254,11 +254,11 @@ export type Database = {
         Row: {
           allow_delete_records: boolean
           block_past_scheduling: boolean
-          enable_week_start_adjust: boolean
           company_lat: number | null
           company_lng: number | null
           dinner_end: string | null
           dinner_start: string | null
+          enable_week_start_adjust: boolean
           geofence_disabled: boolean
           geofence_radius_m: number
           id: number
@@ -272,11 +272,11 @@ export type Database = {
         Insert: {
           allow_delete_records?: boolean
           block_past_scheduling?: boolean
-          enable_week_start_adjust?: boolean
           company_lat?: number | null
           company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
+          enable_week_start_adjust?: boolean
           geofence_disabled?: boolean
           geofence_radius_m?: number
           id?: number
@@ -290,11 +290,11 @@ export type Database = {
         Update: {
           allow_delete_records?: boolean
           block_past_scheduling?: boolean
-          enable_week_start_adjust?: boolean
           company_lat?: number | null
           company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
+          enable_week_start_adjust?: boolean
           geofence_disabled?: boolean
           geofence_radius_m?: number
           id?: number
@@ -394,6 +394,7 @@ export type Database = {
           email: string
           hire_date: string | null
           id: string
+          must_calculate_settlement: boolean
           must_publish_schedule: boolean
           role: Database["public"]["Enums"]["member_role"]
           updated_at: string
@@ -406,6 +407,7 @@ export type Database = {
           email: string
           hire_date?: string | null
           id: string
+          must_calculate_settlement?: boolean
           must_publish_schedule?: boolean
           role?: Database["public"]["Enums"]["member_role"]
           updated_at?: string
@@ -418,6 +420,7 @@ export type Database = {
           email?: string
           hire_date?: string | null
           id?: string
+          must_calculate_settlement?: boolean
           must_publish_schedule?: boolean
           role?: Database["public"]["Enums"]["member_role"]
           updated_at?: string
@@ -552,6 +555,48 @@ export type Database = {
           {
             foreignKeyName: "schedules_updated_by_fkey"
             columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      settlement_snapshots: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          member_id: string
+          snapshot: Json
+          year_month: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          member_id: string
+          snapshot: Json
+          year_month: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          member_id?: string
+          snapshot?: Json
+          year_month?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlement_snapshots_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_snapshots_member_id_fkey"
+            columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
