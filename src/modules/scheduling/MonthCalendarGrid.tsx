@@ -91,10 +91,22 @@ export function MonthCalendarGrid({
                 } ${clickable ? 'cursor-pointer hover:brightness-95' : 'cursor-default'}`}
               >
                 {!beforeMin && isAdvisoryOverride && (
-                  <div
-                    className={`absolute bottom-0 right-0 w-10 h-10 ${STATUS_BG[cell?.status ?? 'unscheduled']}`}
-                    style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}
-                  />
+                  <div className="absolute bottom-0 right-0 w-10 h-10">
+                    <div
+                      className={`absolute inset-0 ${STATUS_BG[cell?.status ?? 'unscheduled']}`}
+                      style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}
+                    />
+                    <div
+                      className="absolute border-t border-dashed border-gray-300"
+                      style={{
+                        width: '56.6px',
+                        top: '20px',
+                        left: '-8.3px',
+                        transform: 'rotate(-45deg)',
+                        transformOrigin: 'center',
+                      }}
+                    />
+                  </div>
                 )}
                 <span className="relative z-10 text-xs text-gray-500">{day}</span>
                 <span className="relative z-10 text-xs font-medium mt-1 break-words">
