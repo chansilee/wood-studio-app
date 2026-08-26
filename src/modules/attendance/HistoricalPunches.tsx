@@ -188,15 +188,13 @@ export function HistoricalPunches({
                   </td>
                   {canDelete && (
                     <td className="py-1">
-                      {r.is_backfill && (
-                        <button
-                          onClick={() => remove(r.id)}
-                          disabled={actingId === r.id}
-                          className="text-red-600 text-xs underline disabled:opacity-50"
-                        >
-                          刪除
-                        </button>
-                      )}
+                      <button
+                        onClick={() => remove(r.id)}
+                        disabled={actingId === r.id}
+                        className="text-red-600 text-xs underline disabled:opacity-50"
+                      >
+                        刪除
+                      </button>
                     </td>
                   )}
                 </tr>

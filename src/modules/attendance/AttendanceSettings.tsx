@@ -132,7 +132,7 @@ export function AttendanceSettings() {
             checked={settings.allow_delete_records}
             onChange={(e) => setSettings({ ...settings, allow_delete_records: e.target.checked })}
           />
-          啟用刪除紀錄功能（打勾後，可在「本日打卡紀錄」刪除當天的打卡；已結算的過往紀錄一律不可刪改）
+          啟用刪除紀錄功能（打勾後，負責人可在「本日打卡紀錄」與「歷史打卡紀錄」刪除任一筆打卡，不限當天）
         </label>
       </section>
 
