@@ -33,6 +33,7 @@ export function OwnerScheduleEditor() {
   const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
+  const [reverting, setReverting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [brush, setBrush] = useState<ShiftStatus>('normal')
   const [viewingId, setViewingId] = useState<string | 'live'>('live')
@@ -241,6 +242,44 @@ export function OwnerScheduleEditor() {
       ? 'synced'
       : 'drifted'
 
+  const handleRevert = async () => {
+    if (!session || !selectedMemberId || !latestPub) return
+    setReverting(true)
+    setMessage(null)
+
+    const publishedEntries = (latestPub.snapshot as PublicationSnapshotEntry[] | null) ?? []
+    const publishedMap: Record<string, ShiftStatus> = Object.fromEntries(
+      publishedEntries.map((e) => [e.work_date, e.status])
+    )
+    const datesToDelete = Object.keys(currentSnapshotMap).filter((d) => !(d in publishedMap))
+
+    const [{ error: upsertError }, { error: deleteError }] = await Promise.all([
+      publishedEntries.length > 0
+        ? supabase.from('schedules').upsert(
+            publishedEntries.map((e) => ({
+              member_id: selectedMemberId,
+              work_date: e.work_date,
+              status: e.status,
+              created_by: session.user.id,
+              updated_by: session.user.id,
+            })),
+            { onConflict: 'member_id,work_date' }
+          )
+        : { error: null },
+      datesToDelete.length > 0
+        ? supabase.from('schedules').delete().eq('member_id', selectedMemberId).in('work_date', datesToDelete)
+        : { error: null },
+    ])
+
+    setReverting(false)
+    if (upsertError || deleteError) {
+      setMessage(`還原失敗：${(upsertError ?? deleteError)?.message}`)
+      return
+    }
+    setMessage('已還原為最新公告狀態')
+    setSavedStatus(publishedMap)
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -287,6 +326,8 @@ export function OwnerScheduleEditor() {
             viewingId={viewingId}
             onChange={setViewingId}
             editable
+            onRevert={handleRevert}
+            reverting={reverting}
           />
 
           <div className="flex flex-wrap gap-2 mb-2">

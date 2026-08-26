@@ -6,11 +6,16 @@ export function PublicationBar({
   viewingId,
   onChange,
   editable = false,
+  onRevert,
+  reverting = false,
 }: {
   publications: Publication[]
   viewingId: string | 'live'
   onChange: (id: string | 'live') => void
   editable?: boolean
+  /** shows a "還原回最新公告狀態" button next to the 暫態 option when provided */
+  onRevert?: () => void
+  reverting?: boolean
 }) {
   const latest = publications[0]
 
@@ -38,6 +43,15 @@ export function PublicationBar({
             </option>
           ))}
         </select>
+      )}
+      {editable && viewingId === 'live' && onRevert && latest && (
+        <button
+          onClick={onRevert}
+          disabled={reverting}
+          className="text-xs border rounded px-2 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          {reverting ? '還原中…' : '還原回最新公告狀態'}
+        </button>
       )}
       {editable && viewingId !== 'live' && (
         <span className="text-xs text-red-600">正在檢視歷史版本，唯讀無法編輯</span>
