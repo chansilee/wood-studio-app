@@ -254,6 +254,7 @@ export type Database = {
         Row: {
           allow_delete_records: boolean
           block_past_scheduling: boolean
+          enable_week_start_adjust: boolean
           company_lat: number | null
           company_lng: number | null
           dinner_end: string | null
@@ -271,6 +272,7 @@ export type Database = {
         Insert: {
           allow_delete_records?: boolean
           block_past_scheduling?: boolean
+          enable_week_start_adjust?: boolean
           company_lat?: number | null
           company_lng?: number | null
           dinner_end?: string | null
@@ -288,6 +290,7 @@ export type Database = {
         Update: {
           allow_delete_records?: boolean
           block_past_scheduling?: boolean
+          enable_week_start_adjust?: boolean
           company_lat?: number | null
           company_lng?: number | null
           dinner_end?: string | null

@@ -309,39 +309,25 @@ export function OwnerScheduleEditor() {
         <div>載入中…</div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-            <div className="flex flex-wrap gap-2">
-              {BRUSH_OPTIONS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={brush === s}
-                  onClick={() => setBrush(s)}
-                  className={`px-3 py-1.5 rounded text-sm border transition ${
-                    brush === s
-                      ? 'bg-black text-white border-black ring-2 ring-offset-1 ring-black'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {SHIFT_STATUS_LABELS[s]}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <span className="text-gray-700">目前狀態：暫態（可編輯）</span>
-              {publications.length > 0 && (
-                <button
-                  onClick={handleRevert}
-                  disabled={reverting}
-                  className="text-xs border rounded px-2 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  {reverting ? '還原中…' : '還原回最新公告狀態'}
-                </button>
-              )}
-            </div>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {BRUSH_OPTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={brush === s}
+                onClick={() => setBrush(s)}
+                className={`px-3 py-1.5 rounded text-sm border transition ${
+                  brush === s
+                    ? 'bg-black text-white border-black ring-2 ring-offset-1 ring-black'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {SHIFT_STATUS_LABELS[s]}
+              </button>
+            ))}
           </div>
           <p className="text-xs text-gray-500 mb-2">
-            先選上面的班別狀態，再點下面日期套用該狀態，每次點擊會立即儲存為暫態
+            先選上面的班別狀態，再點下面日期套用該狀態，每次點擊會立即儲存，但不會公告給該成員
           </p>
 
           {orgSettings?.show_color_legend && <Legend />}
@@ -360,21 +346,23 @@ export function OwnerScheduleEditor() {
 
           {showWeekStart && (
             <>
-              <div className="flex items-center gap-2 mt-3 text-sm">
-                <span className="text-gray-600">切換周起始：{WEEKDAY_NAMES[weekStartWeekday]}</span>
-                <button
-                  onClick={() => shiftWeekStart(-1, session?.user.id)}
-                  className="border rounded px-2 py-0.5"
-                >
-                  &lt;
-                </button>
-                <button
-                  onClick={() => shiftWeekStart(1, session?.user.id)}
-                  className="border rounded px-2 py-0.5"
-                >
-                  &gt;
-                </button>
-              </div>
+              {orgSettings?.enable_week_start_adjust && (
+                <div className="flex items-center justify-center gap-3 mt-3 text-sm">
+                  <button
+                    onClick={() => shiftWeekStart(-1, session?.user.id)}
+                    className="border rounded px-2 py-0.5"
+                  >
+                    &lt;
+                  </button>
+                  <span className="text-gray-600">切換周起始：{WEEKDAY_NAMES[weekStartWeekday]}</span>
+                  <button
+                    onClick={() => shiftWeekStart(1, session?.user.id)}
+                    className="border rounded px-2 py-0.5"
+                  >
+                    &gt;
+                  </button>
+                </div>
+              )}
 
               <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
                 {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
@@ -382,9 +370,9 @@ export function OwnerScheduleEditor() {
             </>
           )}
 
-          <div className="mt-4">
+          <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
             <p
-              className={`text-sm mb-1 ${
+              className={`text-sm ${
                 publishStatus === 'none'
                   ? 'text-red-600'
                   : publishStatus === 'synced'
@@ -398,13 +386,24 @@ export function OwnerScheduleEditor() {
                   ? '<本月已公告且當前暫態為最新狀態>'
                   : '<當前暫態有更新未同步於最新公告>'}
             </p>
-            <button
-              onClick={handlePublish}
-              disabled={publishing || loading}
-              className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
-            >
-              {publishing ? '公告中…' : '公告給使用者'}
-            </button>
+            <div className="flex gap-2">
+              {publications.length > 0 && (
+                <button
+                  onClick={handleRevert}
+                  disabled={reverting}
+                  className="bg-white text-gray-700 border border-gray-300 rounded px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {reverting ? '還原中…' : '還原回最後一版公告'}
+                </button>
+              )}
+              <button
+                onClick={handlePublish}
+                disabled={publishing || loading}
+                className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {publishing ? '公告中…' : '>>公告給使用者'}
+              </button>
+            </div>
           </div>
         </>
       )}

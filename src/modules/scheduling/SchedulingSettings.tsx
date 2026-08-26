@@ -14,7 +14,11 @@ export function SchedulingSettings() {
     patch: Partial<
       Pick<
         OrgSettings,
-        'block_past_scheduling' | 'remind_month_end_publish' | 'protect_review_records' | 'show_color_legend'
+        | 'block_past_scheduling'
+        | 'remind_month_end_publish'
+        | 'protect_review_records'
+        | 'show_color_legend'
+        | 'enable_week_start_adjust'
       >
     >
   ) => {
@@ -99,6 +103,23 @@ export function SchedulingSettings() {
           <br />
           <span className="text-xs text-gray-500">
             開啟後，月曆上方會顯示「正常班」「例假」等顏色說明框框；預設關閉。
+          </span>
+        </span>
+      </label>
+
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={settings.enable_week_start_adjust}
+          disabled={saving}
+          onChange={(e) => save({ enable_week_start_adjust: e.target.checked })}
+          className="mt-0.5"
+        />
+        <span>
+          開啟周起始調整鈕
+          <br />
+          <span className="text-xs text-gray-500">
+            開啟後（預設），排班模式月曆下方會顯示「切換周起始」的調整列；關閉後則隱藏該列。
           </span>
         </span>
       </label>
