@@ -18,15 +18,15 @@ const STATUS_COLOR: Record<ShiftStatus, string> = {
   unscheduled: 'bg-white text-gray-400',
 }
 
-/** bottom-right corner triangle color for advisory-override days, echoing the underlying shift status */
-const STATUS_TRIANGLE_COLOR: Record<ShiftStatus, string> = {
-  normal: 'bg-green-300',
-  regular_off: 'bg-blue-300',
-  special_off: 'bg-purple-300',
+/** same -50 tier as STATUS_COLOR, used bare (no text-*) for the corner triangle fill */
+const STATUS_BG: Record<ShiftStatus, string> = {
+  normal: 'bg-green-50',
+  regular_off: 'bg-blue-50',
+  special_off: 'bg-purple-50',
   unscheduled: 'bg-white',
 }
 
-const ADVISORY_OVERRIDE_COLOR = 'bg-amber-100 text-amber-900'
+const ADVISORY_OVERRIDE_COLOR = 'bg-amber-50 text-amber-800'
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -92,7 +92,7 @@ export function MonthCalendarGrid({
               >
                 {!beforeMin && isAdvisoryOverride && (
                   <div
-                    className={`absolute bottom-0 right-0 w-10 h-10 ${STATUS_TRIANGLE_COLOR[cell?.status ?? 'unscheduled']}`}
+                    className={`absolute bottom-0 right-0 w-10 h-10 ${STATUS_BG[cell?.status ?? 'unscheduled']}`}
                     style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}
                   />
                 )}
