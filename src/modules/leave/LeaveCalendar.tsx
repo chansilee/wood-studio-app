@@ -155,8 +155,8 @@ export function LeaveCalendar() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        {isOwner && (
+      {isOwner && (
+        <div className="flex flex-wrap items-end gap-3 mb-4">
           <div>
             <label className="block text-xs text-gray-600 mb-1">成員</label>
             <select
@@ -172,8 +172,11 @@ export function LeaveCalendar() {
               ))}
             </select>
           </div>
-        )}
-        <MonthSelector value={yearMonth} onChange={setYearMonth} />
+        </div>
+      )}
+
+      <div className="mb-3">
+        <MonthSelector value={yearMonth} onChange={setYearMonth} centered />
       </div>
 
       <p className="text-xs text-gray-500 mb-3">

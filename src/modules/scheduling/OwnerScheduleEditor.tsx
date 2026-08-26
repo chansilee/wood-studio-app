@@ -295,7 +295,6 @@ export function OwnerScheduleEditor() {
             ))}
           </select>
         </div>
-        <MonthSelector value={yearMonth} onChange={setYearMonth} />
         {selectedMember && (
           <div className="text-sm text-gray-600">
             約定每日工時：{selectedMember.default_daily_hours} 小時
@@ -346,6 +345,9 @@ export function OwnerScheduleEditor() {
           </p>
 
           {orgSettings?.show_color_legend && <Legend />}
+          <div className="mb-2">
+            <MonthSelector value={yearMonth} onChange={setYearMonth} centered />
+          </div>
           <MonthCalendarGrid
             year={year}
             month={month}
