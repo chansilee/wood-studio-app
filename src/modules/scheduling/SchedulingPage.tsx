@@ -4,8 +4,9 @@ import { OwnerScheduleEditor } from './OwnerScheduleEditor'
 import { BrowseScheduleView } from './BrowseScheduleView'
 import { CalendarOverridesManager } from './CalendarOverridesManager'
 import { SchedulingSettings } from './SchedulingSettings'
+import { ReviewRecordsPage } from './ReviewRecordsPage'
 
-type Tab = 'edit' | 'browse' | 'overrides' | 'settings'
+type Tab = 'edit' | 'browse' | 'overrides' | 'settings' | 'reviews'
 
 export function SchedulingPage() {
   const { profile } = useAuth()
@@ -51,6 +52,14 @@ export function SchedulingPage() {
             >
               排班設定
             </button>
+            <button
+              onClick={() => setTab('reviews')}
+              className={`px-3 py-1.5 rounded text-sm ${
+                tab === 'reviews' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              審閱紀錄
+            </button>
           </div>
         )}
       </div>
@@ -61,8 +70,10 @@ export function SchedulingPage() {
         <BrowseScheduleView />
       ) : effectiveTab === 'overrides' ? (
         <CalendarOverridesManager />
-      ) : (
+      ) : effectiveTab === 'settings' ? (
         <SchedulingSettings />
+      ) : (
+        <ReviewRecordsPage />
       )}
     </div>
   )

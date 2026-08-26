@@ -10,7 +10,11 @@ export function SchedulingSettings() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
-  const save = async (patch: Partial<Pick<OrgSettings, 'block_past_scheduling' | 'remind_month_end_publish'>>) => {
+  const save = async (
+    patch: Partial<
+      Pick<OrgSettings, 'block_past_scheduling' | 'remind_month_end_publish' | 'protect_review_records'>
+    >
+  ) => {
     setSaving(true)
     setMessage(null)
     const { error } = await supabase.from('org_settings').update(patch).eq('id', 1)
@@ -58,6 +62,23 @@ export function SchedulingSettings() {
           <br />
           <span className="text-xs text-gray-500">
             開啟後，每月 25 號起，若「必須公告班表」的成員還沒收到下個月的班表公告，首頁會顯示紅字提醒。
+          </span>
+        </span>
+      </label>
+
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={settings.protect_review_records}
+          disabled={saving}
+          onChange={(e) => save({ protect_review_records: e.target.checked })}
+          className="mt-0.5"
+        />
+        <span>
+          避免刪除審閱紀錄
+          <br />
+          <span className="text-xs text-gray-500">
+            開啟後（預設），審閱紀錄無法刪除。關閉後，可在「審閱紀錄」頁面個別刪除紀錄，刪除後該成員會視為尚未審閱。
           </span>
         </span>
       </label>

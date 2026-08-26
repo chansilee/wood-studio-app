@@ -5,6 +5,7 @@ import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
 import { Legend } from './Legend'
 import { PublicationStatusLine } from './PublicationStatusLine'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
+import { useScheduleConfirmation } from './useScheduleConfirmation'
 import { useWeekStart } from './useWeekStart'
 import { checkWeeklyRestCompliance, daysInMonth, pad2, todayStr } from '@/shared/lib/date'
 import type { Enums, Tables } from '@/shared/types/database'
@@ -21,12 +22,20 @@ export function BrowseScheduleView() {
   const [overridesMap, setOverridesMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
 
   const [year, month] = yearMonth.split('-').map(Number)
   const memberId = isOwner ? selectedMemberId : (profile?.id ?? '')
   const { publications } = useSchedulePublications(memberId || undefined, yearMonth)
   const selectedMember = isOwner ? members.find((m) => m.id === memberId) : profile
   const { weekStartWeekday } = useWeekStart(memberId || undefined, yearMonth, selectedMember?.hire_date)
+
+  const latestPublication = publications[0]
+  const {
+    confirmed,
+    loading: confirmationLoading,
+    reload: reloadConfirmation,
+  } = useScheduleConfirmation(latestPublication?.id)
 
   useEffect(() => {
     if (!isOwner || !profile) return
@@ -66,7 +75,8 @@ export function BrowseScheduleView() {
     setLoading(false)
   }
 
-  const activePublication = viewingId ? publications.find((p) => p.id === viewingId) : publications[0]
+  const isViewingLatest = !viewingId || (latestPublication && viewingId === latestPublication.id)
+  const activePublication = viewingId ? publications.find((p) => p.id === viewingId) : latestPublication
   const displayStatus: Record<string, ShiftStatus> = Object.fromEntries(
     ((activePublication?.snapshot as PublicationSnapshotEntry[] | null) ?? []).map((e) => [
       e.work_date,
@@ -84,6 +94,17 @@ export function BrowseScheduleView() {
 
   const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled
   const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
+  const isOwnSchedule = !!profile && memberId === profile.id
+
+  const handleConfirm = async () => {
+    if (!profile || !latestPublication) return
+    setConfirming(true)
+    const { error } = await supabase
+      .from('schedule_confirmations')
+      .insert({ publication_id: latestPublication.id, member_id: profile.id })
+    setConfirming(false)
+    if (!error) reloadConfirmation()
+  }
 
   return (
     <div>
@@ -121,17 +142,37 @@ export function BrowseScheduleView() {
       ) : (
         <>
           <PublicationStatusLine publications={publications} viewingId={viewingId} onChange={setViewingId} />
-          <Legend />
-          <MonthCalendarGrid
-            year={year}
-            month={month}
-            cells={cells}
-            weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
-          />
-          {showWeekStart && (
-            <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
-              {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
-            </p>
+          {publications.length > 0 && (
+            <>
+              <Legend />
+              <MonthCalendarGrid
+                year={year}
+                month={month}
+                cells={cells}
+                weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
+              />
+              {showWeekStart && (
+                <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
+                  {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
+                </p>
+              )}
+
+              {isOwnSchedule && isViewingLatest && !confirmationLoading && (
+                <div className="flex justify-end mt-4">
+                  {confirmed ? (
+                    <span className="text-sm text-green-700">已確認此排班</span>
+                  ) : (
+                    <button
+                      onClick={handleConfirm}
+                      disabled={confirming}
+                      className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+                    >
+                      {confirming ? '確認中…' : '>> 我已瀏覽並確認此排班'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </>
       )}

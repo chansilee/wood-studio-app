@@ -7,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.17"
   }
@@ -258,6 +260,7 @@ export type Database = {
           id: number
           lunch_end: string | null
           lunch_start: string | null
+          protect_review_records: boolean
           remind_month_end_publish: boolean
           updated_at: string
         }
@@ -273,6 +276,7 @@ export type Database = {
           id?: number
           lunch_end?: string | null
           lunch_start?: string | null
+          protect_review_records?: boolean
           remind_month_end_publish?: boolean
           updated_at?: string
         }
@@ -288,6 +292,7 @@ export type Database = {
           id?: number
           lunch_end?: string | null
           lunch_start?: string | null
+          protect_review_records?: boolean
           remind_month_end_publish?: boolean
           updated_at?: string
         }
@@ -410,6 +415,42 @@ export type Database = {
           weekly_rest_check_enabled?: boolean
         }
         Relationships: []
+      }
+      schedule_confirmations: {
+        Row: {
+          confirmed_at: string
+          id: string
+          member_id: string
+          publication_id: string
+        }
+        Insert: {
+          confirmed_at?: string
+          id?: string
+          member_id: string
+          publication_id: string
+        }
+        Update: {
+          confirmed_at?: string
+          id?: string
+          member_id?: string
+          publication_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_confirmations_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_confirmations_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: true
+            referencedRelation: "schedule_publications"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       schedule_publications: {
         Row: {
@@ -585,11 +626,11 @@ export type Database = {
     }
     Functions: {
       current_role_name: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: Database["public"]["Enums"]["member_role"]
       }
-      has_any_owner: { Args: Record<PropertyKey, never>; Returns: boolean }
-      is_owner: { Args: Record<PropertyKey, never>; Returns: boolean }
+      has_any_owner: { Args: never; Returns: boolean }
+      is_owner: { Args: never; Returns: boolean }
     }
     Enums: {
       attendance_approval_status: "pending" | "approved" | "rejected"
@@ -613,7 +654,7 @@ export type Database = {
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals["public"]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends

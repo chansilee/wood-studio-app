@@ -38,20 +38,29 @@ export function HomePage() {
       for (const ym of relevantMonths) {
         const { data: pubs } = await supabase
           .from('schedule_publications')
-          .select('published_at')
+          .select('id, published_at')
           .eq('member_id', profile.id)
           .eq('year_month', `${ym}-01`)
           .order('published_at', { ascending: false })
 
         if (pubs && pubs.length > 0) {
-          const monthNum = Number(ym.split('-')[1])
-          const isFirst = pubs.length === 1
-          items.push({
-            id: `schedule-${ym}`,
-            text: `您收到[${monthNum}月]排班表${isFirst ? '' : '更新'}，請進[排班系統]確認排班狀態`,
-            colorClass: 'text-blue-700',
-            sortKey: new Date(pubs[0].published_at).getTime(),
-          })
+          const latest = pubs[0]
+          const { data: confirmation } = await supabase
+            .from('schedule_confirmations')
+            .select('id')
+            .eq('publication_id', latest.id)
+            .maybeSingle()
+
+          if (!confirmation) {
+            const monthNum = Number(ym.split('-')[1])
+            const isFirst = pubs.length === 1
+            items.push({
+              id: `schedule-${ym}`,
+              text: `您收到[${monthNum}月]排班表${isFirst ? '' : '更新'}，請進[排班系統]確認排班狀態`,
+              colorClass: 'text-blue-700',
+              sortKey: new Date(latest.published_at).getTime(),
+            })
+          }
         }
       }
 
