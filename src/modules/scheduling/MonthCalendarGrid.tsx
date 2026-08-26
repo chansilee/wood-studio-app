@@ -18,6 +18,16 @@ const STATUS_COLOR: Record<ShiftStatus, string> = {
   unscheduled: 'bg-white text-gray-400',
 }
 
+/** bottom-right corner triangle color for advisory-override days, echoing the underlying shift status */
+const STATUS_TRIANGLE_COLOR: Record<ShiftStatus, string> = {
+  normal: 'bg-green-300',
+  regular_off: 'bg-blue-300',
+  special_off: 'bg-purple-300',
+  unscheduled: 'bg-white',
+}
+
+const ADVISORY_OVERRIDE_COLOR = 'bg-amber-100 text-amber-900'
+
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六']
 
 export function MonthCalendarGrid({
@@ -60,25 +70,34 @@ export function MonthCalendarGrid({
             const beforeMin = !!minDate && date < minDate
             const beforeReadOnly = !!readOnlyBefore && date < readOnlyBefore
             const isFullMasked = !!cell?.overrideName && !!cell?.overrideFullMask
+            const isAdvisoryOverride = !!cell?.overrideName && !cell?.overrideFullMask
             const clickable = !!onDayClick && !isFullMasked && !beforeMin && !beforeReadOnly
             const isWeekStartCol = weekStartWeekday !== undefined && di === weekStartWeekday
             const colorClass = beforeMin
               ? 'bg-gray-100 text-gray-300'
               : isFullMasked
                 ? 'bg-red-50 text-red-700'
-                : STATUS_COLOR[cell?.status ?? 'unscheduled']
+                : isAdvisoryOverride
+                  ? ADVISORY_OVERRIDE_COLOR
+                  : STATUS_COLOR[cell?.status ?? 'unscheduled']
             return (
               <button
                 key={di}
                 type="button"
                 disabled={!clickable}
                 onClick={() => onDayClick?.(date)}
-                className={`border p-1 h-20 text-left flex flex-col ${colorClass} ${
+                className={`relative border p-1 h-20 text-left flex flex-col ${colorClass} ${
                   isWeekStartCol ? 'border-l-4 border-l-gray-900' : ''
                 } ${clickable ? 'cursor-pointer hover:brightness-95' : 'cursor-default'}`}
               >
-                <span className="text-xs text-gray-500">{day}</span>
-                <span className="text-xs font-medium mt-1 break-words">
+                {!beforeMin && isAdvisoryOverride && (
+                  <div
+                    className={`absolute bottom-0 right-0 w-10 h-10 ${STATUS_TRIANGLE_COLOR[cell?.status ?? 'unscheduled']}`}
+                    style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}
+                  />
+                )}
+                <span className="relative z-10 text-xs text-gray-500">{day}</span>
+                <span className="relative z-10 text-xs font-medium mt-1 break-words">
                   {beforeMin ? (
                     ''
                   ) : cell?.overrideName ? (
