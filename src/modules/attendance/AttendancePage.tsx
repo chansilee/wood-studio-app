@@ -6,6 +6,7 @@ import { TodayPunches } from './TodayPunches'
 import { HistoricalPunches } from './HistoricalPunches'
 import { AttendanceHistory } from './AttendanceHistory'
 import { AttendanceSettings } from './AttendanceSettings'
+import { MonthSelector } from '@/shared/components/MonthSelector'
 import { todayStr } from '@/shared/lib/date'
 import type { Tables } from '@/shared/types/database'
 
@@ -98,15 +99,7 @@ export function AttendancePage() {
                 </select>
               </div>
             )}
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">月份</label>
-              <input
-                type="month"
-                value={yearMonth}
-                onChange={(e) => setYearMonth(e.target.value)}
-                className="border rounded px-2 py-1"
-              />
-            </div>
+            <MonthSelector value={yearMonth} onChange={setYearMonth} />
           </div>
 
           {isViewingSelf && <ClockInOut onRecorded={bump} />}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { MonthCalendarGrid, type DayCell } from './MonthCalendarGrid'
+import { MonthSelector } from '@/shared/components/MonthSelector'
 import { Legend } from './Legend'
 import { PublicationStatusLine } from './PublicationStatusLine'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
@@ -137,15 +138,7 @@ export function BrowseScheduleView() {
             </select>
           </div>
         )}
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">月份</label>
-          <input
-            type="month"
-            value={yearMonth}
-            onChange={(e) => setYearMonth(e.target.value)}
-            className="border rounded px-2 py-1"
-          />
-        </div>
+        <MonthSelector value={yearMonth} onChange={setYearMonth} />
       </div>
 
       {loading ? (

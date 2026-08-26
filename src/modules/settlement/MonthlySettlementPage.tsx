@@ -3,6 +3,7 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { useSchedulePublications, type PublicationSnapshotEntry } from '@/modules/scheduling/usePublications'
 import { formatHours } from '@/modules/leave/leaveDisplay'
+import { MonthSelector } from '@/shared/components/MonthSelector'
 import { daysInMonth, formatDateSlash, pad2, todayStr } from '@/shared/lib/date'
 import type { Tables } from '@/shared/types/database'
 
@@ -197,15 +198,7 @@ export function MonthlySettlementPage() {
             </select>
           </div>
         )}
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">月份</label>
-          <input
-            type="month"
-            value={yearMonth}
-            onChange={(e) => setYearMonth(e.target.value)}
-            className="border rounded px-2 py-1"
-          />
-        </div>
+        <MonthSelector value={yearMonth} onChange={setYearMonth} />
       </div>
 
       <p className="text-xs text-gray-500 mb-3">
