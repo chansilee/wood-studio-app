@@ -134,7 +134,9 @@ export function MonthlySettlementPage() {
         leaveLabel,
         leaveTypeName,
         leaveContributedHours,
-        settledHours: Math.round(settledHours * 100) / 100,
+        // 無條件捨去到 0.5 小時為單位，例如 3.4 -> 3、3.6 -> 3.5
+        // (+1e-9 guards against float noise turning an exact X.5 into X.4999999…)
+        settledHours: Math.floor((settledHours + 1e-9) * 2) / 2,
       }
     })
 
