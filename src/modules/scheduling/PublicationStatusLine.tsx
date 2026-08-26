@@ -32,6 +32,9 @@ export function PublicationStatusLine({
           </option>
         ))}
       </select>
+      <span className="text-gray-700">
+        公告紀錄ID：<span className="font-bold">{activeId}</span>
+      </span>
     </div>
   )
 }
