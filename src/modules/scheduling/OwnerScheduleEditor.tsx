@@ -612,8 +612,8 @@ export function OwnerScheduleEditor() {
           </div>
 
           {selectedMember && (
-            <div className="mt-4">
-              <p className="text-sm font-medium mb-1">{selectedMember.display_name}偏好回報：</p>
+            <div className="mt-4 border border-dashed border-gray-300 rounded p-3">
+              <p className="text-sm font-bold mb-1">{selectedMember.display_name}偏好回報：</p>
               {Object.keys(preferenceLogMap).length === 0 ? (
                 <p className="text-xs text-gray-400">目前尚無偏好回報</p>
               ) : (
