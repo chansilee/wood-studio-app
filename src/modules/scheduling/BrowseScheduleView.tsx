@@ -38,6 +38,7 @@ export function BrowseScheduleView() {
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [carryInStreak, setCarryInStreak] = useState(0)
+  const loadSeq = useRef(0)
 
   const [year, month] = yearMonth.split('-').map(Number)
   const memberId = isOwner ? selectedMemberId : (profile?.id ?? '')
@@ -95,6 +96,7 @@ export function BrowseScheduleView() {
   }, [memberId, yearMonth, selectedMember?.hire_date])
 
   const load = async () => {
+    const seq = ++loadSeq.current
     setLoading(true)
     const firstDay = `${year}-${pad2(month)}-01`
     const lastDay = `${year}-${pad2(month)}-${pad2(daysInMonth(year, month))}`
@@ -104,6 +106,10 @@ export function BrowseScheduleView() {
       .select('override_date, name, type')
       .gte('override_date', firstDay)
       .lte('override_date', lastDay)
+
+    // a newer load may have started while this one was in flight — discard this
+    // result so it can't clobber fresher state with a different month's data
+    if (seq !== loadSeq.current) return
 
     const overrides: Record<string, OverrideInfo> = {}
     for (const o of overrideRows ?? []) overrides[o.override_date] = { name: o.name, type: o.type }
