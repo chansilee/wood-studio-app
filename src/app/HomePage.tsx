@@ -203,6 +203,37 @@ export function HomePage() {
         }
       }
 
+      // 6. owner-only: throughout January, remind about members missing this
+      // year's new 約定月薪 (effective 該年 1/1) in 成員管理's [$] wage table
+      if (isOwner && currentYearMonth.slice(5, 7) === '01') {
+        const currentYear = currentYearMonth.slice(0, 4)
+        const januaryFirst = `${currentYear}-01-01`
+        const { data: withHireDate } = await supabase
+          .from('profiles')
+          .select('id, display_name')
+          .not('hire_date', 'is', null)
+          .lte('hire_date', januaryFirst)
+
+        if (withHireDate && withHireDate.length > 0) {
+          const { data: wageRows } = await supabase
+            .from('member_wage_rates')
+            .select('member_id')
+            .eq('effective_date', januaryFirst)
+
+          const doneIds = new Set((wageRows ?? []).map((w) => w.member_id))
+          const missing = withHireDate.filter((m) => !doneIds.has(m.id))
+          const now = Date.now()
+          for (const m of missing) {
+            items.push({
+              id: `wage-${m.id}-${currentYear}`,
+              text: `您尚未新增${m.display_name} - ${currentYear}年的<新時薪>，請至<成員管理>該成員的[$]裡新增`,
+              colorClass: 'text-red-600 font-medium',
+              sortKey: now,
+            })
+          }
+        }
+      }
+
       items.sort((a, b) => b.sortKey - a.sortKey)
       setNotifications(items)
     }
