@@ -566,6 +566,41 @@ export type Database = {
           },
         ]
       }
+      schedule_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          preference: Database["public"]["Enums"]["schedule_preference_type"]
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          preference: Database["public"]["Enums"]["schedule_preference_type"]
+          updated_at?: string
+          work_date: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          preference?: Database["public"]["Enums"]["schedule_preference_type"]
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_preferences_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedules: {
         Row: {
           created_by: string | null
@@ -757,6 +792,7 @@ export type Database = {
       leave_duration_type: "full_day" | "partial"
       leave_status: "pending" | "approved" | "rejected"
       member_role: "owner" | "staff" | "apprentice" | "guest"
+      schedule_preference_type: "prefer_work" | "prefer_off"
       shift_status: "normal" | "unscheduled" | "regular_off" | "special_off"
       work_log_type: "production" | "learning"
     }
@@ -897,6 +933,7 @@ export const Constants = {
       leave_duration_type: ["full_day", "partial"],
       leave_status: ["pending", "approved", "rejected"],
       member_role: ["owner", "staff", "apprentice", "guest"],
+      schedule_preference_type: ["prefer_work", "prefer_off"],
       shift_status: ["normal", "unscheduled", "regular_off", "special_off"],
       work_log_type: ["production", "learning"],
     },

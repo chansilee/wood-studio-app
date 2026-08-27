@@ -72,6 +72,19 @@ export function defaultSettlementYearMonth(enabled: boolean): string {
   return enabled && day <= 5 ? addMonths(base, -1) : base
 }
 
+/**
+ * The single 'YYYY-MM' a member may currently declare/edit 排班喜好 for: next
+ * month before the 25th, the month after that from the 25th onward (mirrors
+ * when the owner closes next month's roster for editing). Matches the
+ * database's preference_editable_year_month() function.
+ */
+export function preferenceEditableYearMonth(): string {
+  const today = todayStr()
+  const day = Number(today.slice(8, 10))
+  const base = today.slice(0, 7)
+  return addMonths(base, day < 25 ? 1 : 2)
+}
+
 /** Formats an ISO timestamp as 'YYYY/MM/DD HH:mm:ss' in the viewer's local time */
 export function formatDateTime(iso: string): string {
   const d = new Date(iso)

@@ -38,6 +38,7 @@ export function MonthCalendarGrid({
   weekStartWeekday,
   minDate,
   readOnlyBefore,
+  preferenceMap,
 }: {
   year: number
   month: number
@@ -49,6 +50,8 @@ export function MonthCalendarGrid({
   minDate?: string | null
   /** dates before this (YYYY-MM-DD) are never clickable, but keep their normal colors (unlike minDate) */
   readOnlyBefore?: string | null
+  /** member's declared 排班喜好 for this month, drawn as an inset border hint even on an otherwise-blank day */
+  preferenceMap?: Record<string, 'prefer_work' | 'prefer_off'>
 }) {
   const weeks = getMonthGrid(year, month)
 
@@ -73,6 +76,7 @@ export function MonthCalendarGrid({
             const isAdvisoryOverride = !!cell?.overrideName && !cell?.overrideFullMask
             const clickable = !!onDayClick && !isFullMasked && !beforeMin && !beforeReadOnly
             const isWeekStartCol = weekStartWeekday !== undefined && di === weekStartWeekday
+            const preference = preferenceMap?.[date]
             const colorClass = beforeMin
               ? 'bg-gray-100 text-gray-300'
               : isFullMasked
@@ -90,6 +94,13 @@ export function MonthCalendarGrid({
                   isWeekStartCol ? 'border-l-4 border-l-gray-900' : ''
                 } ${clickable ? 'cursor-pointer hover:brightness-95' : 'cursor-default'}`}
               >
+                {!beforeMin && preference && (
+                  <div
+                    className={`absolute inset-[1px] border-[5px] rounded-sm pointer-events-none z-10 ${
+                      preference === 'prefer_work' ? 'border-green-500' : 'border-red-500'
+                    }`}
+                  />
+                )}
                 {!beforeMin && isAdvisoryOverride && (
                   <div className="absolute bottom-0 right-0 w-10 h-10">
                     <div

@@ -40,6 +40,7 @@ export function OwnerScheduleEditor() {
   const [selectedMemberId, setSelectedMemberId] = useState<string>('')
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
   const [savedStatus, setSavedStatus] = useState<Record<string, ShiftStatus>>({})
+  const [preferenceMap, setPreferenceMap] = useState<Record<string, 'prefer_work' | 'prefer_off'>>({})
   const [overridesMap, setOverridesMap] = useState<Record<string, OverrideInfo>>({})
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
@@ -47,6 +48,7 @@ export function OwnerScheduleEditor() {
   const [message, setMessage] = useState<string | null>(null)
   const [brush, setBrush] = useState<ShiftStatus>('normal')
   const [carryInStreak, setCarryInStreak] = useState(0)
+  const loadSeq = useRef(0)
 
   const [year, month] = yearMonth.split('-').map(Number)
   const {
@@ -112,7 +114,11 @@ export function OwnerScheduleEditor() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'schedules', filter: `member_id=eq.${selectedMemberId}` },
         (payload) => {
-          const row = (payload.new ?? payload.old) as { work_date?: string; status?: ShiftStatus } | null
+          // payload.new is `{}` (not null/undefined) on a DELETE, so `??` never
+          // falls through to payload.old — branch on eventType explicitly
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as
+            | { work_date?: string; status?: ShiftStatus }
+            | null
           if (!row?.work_date || !row.work_date.startsWith(yearMonth)) return
           if (payload.eventType === 'DELETE') {
             setSavedStatus((prev) => {
@@ -122,6 +128,44 @@ export function OwnerScheduleEditor() {
             })
           } else if (row.status) {
             setSavedStatus((prev) => ({ ...prev, [row.work_date as string]: row.status as ShiftStatus }))
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [selectedMemberId, yearMonth])
+
+  // realtime: keep the 排班喜好 hint border in sync as the member checks/unchecks it
+  useEffect(() => {
+    if (!selectedMemberId) return
+    const channel = supabase
+      .channel(`schedule_preferences-${selectedMemberId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'schedule_preferences',
+          filter: `member_id=eq.${selectedMemberId}`,
+        },
+        (payload) => {
+          // payload.new is `{}` (not null/undefined) on a DELETE, so `??` never
+          // falls through to payload.old — branch on eventType explicitly
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as
+            | { work_date?: string; preference?: 'prefer_work' | 'prefer_off' }
+            | null
+          if (!row?.work_date || !row.work_date.startsWith(yearMonth)) return
+          if (payload.eventType === 'DELETE') {
+            setPreferenceMap((prev) => {
+              const next = { ...prev }
+              delete next[row.work_date as string]
+              return next
+            })
+          } else if (row.preference) {
+            setPreferenceMap((prev) => ({ ...prev, [row.work_date as string]: row.preference as 'prefer_work' | 'prefer_off' }))
           }
         }
       )
@@ -156,12 +200,13 @@ export function OwnerScheduleEditor() {
   }, [selectedMemberId])
 
   const load = async () => {
+    const seq = ++loadSeq.current
     setLoading(true)
     setMessage(null)
     const firstDay = `${year}-${pad2(month)}-01`
     const lastDay = `${year}-${pad2(month)}-${pad2(daysInMonth(year, month))}`
 
-    const [{ data: scheduleRows }, { data: overrideRows }] = await Promise.all([
+    const [{ data: scheduleRows }, { data: overrideRows }, { data: preferenceRows }] = await Promise.all([
       supabase
         .from('schedules')
         .select('work_date, status')
@@ -173,7 +218,18 @@ export function OwnerScheduleEditor() {
         .select('override_date, name, type')
         .gte('override_date', firstDay)
         .lte('override_date', lastDay),
+      supabase
+        .from('schedule_preferences')
+        .select('work_date, preference')
+        .eq('member_id', selectedMemberId)
+        .gte('work_date', firstDay)
+        .lte('work_date', lastDay),
     ])
+
+    // a newer load may have started (e.g. yearMonth/selectedMemberId changed again
+    // while this one was in flight) — discard this result so it can't clobber
+    // fresher state with a different month's data
+    if (seq !== loadSeq.current) return
 
     const overrides: Record<string, OverrideInfo> = {}
     for (const o of overrideRows ?? []) overrides[o.override_date] = { name: o.name, type: o.type }
@@ -182,6 +238,10 @@ export function OwnerScheduleEditor() {
     const statusMap: Record<string, ShiftStatus> = {}
     for (const row of scheduleRows ?? []) statusMap[row.work_date] = row.status
     setSavedStatus(statusMap)
+
+    const prefMap: Record<string, 'prefer_work' | 'prefer_off'> = {}
+    for (const row of preferenceRows ?? []) prefMap[row.work_date] = row.preference
+    setPreferenceMap(prefMap)
 
     setLoading(false)
   }
@@ -378,6 +438,9 @@ export function OwnerScheduleEditor() {
           <p className="text-xs text-gray-500 mb-2">
             先選上面的班別狀態，再點下面日期套用該狀態，每次點擊會立即儲存，但不會公告給該成員
           </p>
+          <p className="text-xs text-gray-500 mb-2">
+            格子邊框顯示綠色/紅色細框，代表該成員填寫的排班喜好（偏好上班／偏好放假），僅供參考，不影響實際排班
+          </p>
 
           {orgSettings?.show_color_legend && <Legend />}
           <div className="mb-2">
@@ -391,6 +454,7 @@ export function OwnerScheduleEditor() {
             weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
             minDate={selectedMember?.hire_date}
             readOnlyBefore={orgSettings?.block_past_scheduling ? todayStr() : undefined}
+            preferenceMap={preferenceMap}
           />
 
           {showWeekStart && (
