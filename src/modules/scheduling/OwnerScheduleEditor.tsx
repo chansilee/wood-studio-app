@@ -13,6 +13,8 @@ import {
   checkWeeklyRestCompliance,
   daysInMonth,
   defaultSchedulingYearMonth,
+  formatDateSlash,
+  formatDateTime,
   pad2,
   todayStr,
 } from '@/shared/lib/date'
@@ -23,6 +25,10 @@ type ShiftStatus = Enums<'shift_status'>
 type OverrideType = Enums<'calendar_override_type'>
 type Profile = Tables<'profiles'>
 type OverrideInfo = { name: string; type: OverrideType }
+type PreferenceValue = 'prefer_work' | 'prefer_off'
+type PrefEntry = { preference: PreferenceValue; updatedAt: string }
+/** debounce before a cleared day's log line disappears, so rapid toggling doesn't flicker */
+const LOG_REMOVE_DEBOUNCE_MS = 1500
 
 const BRUSH_OPTIONS: ShiftStatus[] = ['normal', 'regular_off', 'special_off', 'unscheduled']
 const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六']
@@ -40,7 +46,8 @@ export function OwnerScheduleEditor() {
   const [selectedMemberId, setSelectedMemberId] = useState<string>('')
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
   const [savedStatus, setSavedStatus] = useState<Record<string, ShiftStatus>>({})
-  const [preferenceMap, setPreferenceMap] = useState<Record<string, 'prefer_work' | 'prefer_off'>>({})
+  const [preferenceMap, setPreferenceMap] = useState<Record<string, PrefEntry>>({})
+  const [preferenceLogMap, setPreferenceLogMap] = useState<Record<string, PrefEntry>>({})
   const [overridesMap, setOverridesMap] = useState<Record<string, OverrideInfo>>({})
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
@@ -55,6 +62,7 @@ export function OwnerScheduleEditor() {
   // events) to resolve which cell a DELETE is for.
   const scheduleIdMap = useRef<Record<string, string>>({})
   const preferenceIdMap = useRef<Record<string, string>>({})
+  const preferenceLogPendingRemoval = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const [year, month] = yearMonth.split('-').map(Number)
   const {
@@ -178,12 +186,13 @@ export function OwnerScheduleEditor() {
             return
           }
           const row = payload.new as
-            | { id: string; work_date?: string; preference?: 'prefer_work' | 'prefer_off' }
+            | { id: string; work_date?: string; preference?: PreferenceValue; updated_at?: string }
             | null
           if (!row?.work_date || !row.work_date.startsWith(yearMonth)) return
           preferenceIdMap.current[row.id] = row.work_date
-          if (row.preference) {
-            setPreferenceMap((prev) => ({ ...prev, [row.work_date as string]: row.preference as 'prefer_work' | 'prefer_off' }))
+          if (row.preference && row.updated_at) {
+            const entry: PrefEntry = { preference: row.preference, updatedAt: row.updated_at }
+            setPreferenceMap((prev) => ({ ...prev, [row.work_date as string]: entry }))
           }
         }
       )
@@ -221,6 +230,8 @@ export function OwnerScheduleEditor() {
     const seq = ++loadSeq.current
     setLoading(true)
     setMessage(null)
+    Object.values(preferenceLogPendingRemoval.current).forEach(clearTimeout)
+    preferenceLogPendingRemoval.current = {}
     const firstDay = `${year}-${pad2(month)}-01`
     const lastDay = `${year}-${pad2(month)}-${pad2(daysInMonth(year, month))}`
 
@@ -238,7 +249,7 @@ export function OwnerScheduleEditor() {
         .lte('override_date', lastDay),
       supabase
         .from('schedule_preferences')
-        .select('id, work_date, preference')
+        .select('id, work_date, preference, updated_at')
         .eq('member_id', selectedMemberId)
         .gte('work_date', firstDay)
         .lte('work_date', lastDay),
@@ -262,17 +273,53 @@ export function OwnerScheduleEditor() {
     setSavedStatus(statusMap)
     scheduleIdMap.current = scheduleIds
 
-    const prefMap: Record<string, 'prefer_work' | 'prefer_off'> = {}
+    const prefMap: Record<string, PrefEntry> = {}
     const prefIds: Record<string, string> = {}
     for (const row of preferenceRows ?? []) {
-      prefMap[row.work_date] = row.preference
+      prefMap[row.work_date] = { preference: row.preference, updatedAt: row.updated_at }
       prefIds[row.id] = row.work_date
     }
     setPreferenceMap(prefMap)
+    setPreferenceLogMap(prefMap)
     preferenceIdMap.current = prefIds
 
     setLoading(false)
   }
+
+  // sync the 偏好回報 log from preferenceMap: additions/changes are immediate,
+  // but a day disappearing (cleared) is debounced so rapid toggling doesn't flicker
+  useEffect(() => {
+    setPreferenceLogMap((prev) => {
+      const next = { ...prev }
+      for (const [date, entry] of Object.entries(preferenceMap)) {
+        next[date] = entry
+        if (preferenceLogPendingRemoval.current[date]) {
+          clearTimeout(preferenceLogPendingRemoval.current[date])
+          delete preferenceLogPendingRemoval.current[date]
+        }
+      }
+      for (const date of Object.keys(prev)) {
+        if (!(date in preferenceMap) && !preferenceLogPendingRemoval.current[date]) {
+          preferenceLogPendingRemoval.current[date] = setTimeout(() => {
+            setPreferenceLogMap((p) => {
+              const n = { ...p }
+              delete n[date]
+              return n
+            })
+            delete preferenceLogPendingRemoval.current[date]
+          }, LOG_REMOVE_DEBOUNCE_MS)
+        }
+      }
+      return next
+    })
+  }, [preferenceMap])
+
+  useEffect(() => {
+    const timers = preferenceLogPendingRemoval.current
+    return () => {
+      Object.values(timers).forEach(clearTimeout)
+    }
+  }, [])
 
   const isFullMaskDate = (date: string) => {
     const ov = overridesMap[date]
@@ -338,6 +385,10 @@ export function OwnerScheduleEditor() {
     }
     reloadPublications()
   }
+
+  const preferenceColorMap: Record<string, PreferenceValue> = Object.fromEntries(
+    Object.entries(preferenceMap).map(([date, entry]) => [date, entry.preference])
+  )
 
   const cells: Record<string, DayCell> = {}
   for (const [date, status] of Object.entries(savedStatus)) {
@@ -482,7 +533,7 @@ export function OwnerScheduleEditor() {
             weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
             minDate={selectedMember?.hire_date}
             readOnlyBefore={orgSettings?.block_past_scheduling ? todayStr() : undefined}
-            preferenceMap={preferenceMap}
+            preferenceMap={preferenceColorMap}
           />
 
           {showWeekStart && (
@@ -559,6 +610,26 @@ export function OwnerScheduleEditor() {
               </div>
             )}
           </div>
+
+          {selectedMember && (
+            <div className="mt-4">
+              <p className="text-sm font-medium mb-1">{selectedMember.display_name}偏好回報：</p>
+              {Object.keys(preferenceLogMap).length === 0 ? (
+                <p className="text-xs text-gray-400">目前尚無偏好回報</p>
+              ) : (
+                <div className="space-y-0.5">
+                  {Object.entries(preferenceLogMap)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([date, entry]) => (
+                      <p key={date} className="text-xs text-gray-500">
+                        {selectedMember.display_name} 於 {formatDateTime(entry.updatedAt)} 點選&lt;
+                        {formatDateSlash(date)}&gt;{entry.preference === 'prefer_work' ? '偏好上班' : '偏好放假'}
+                      </p>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

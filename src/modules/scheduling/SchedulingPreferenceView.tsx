@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { MonthSelector } from '@/shared/components/MonthSelector'
-import { daysInMonth, getMonthGrid, pad2, preferenceEditableYearMonth } from '@/shared/lib/date'
+import {
+  daysInMonth,
+  formatDateSlash,
+  formatDateTime,
+  getMonthGrid,
+  pad2,
+  preferenceEditableYearMonth,
+} from '@/shared/lib/date'
 import { CALENDAR_OVERRIDE_FULL_MASK, CALENDAR_OVERRIDE_LABELS } from '@/shared/constants/roles'
 import type { Enums } from '@/shared/types/database'
 
@@ -10,6 +17,9 @@ type Preference = Enums<'schedule_preference_type'>
 type Brush = Preference | 'clear'
 type OverrideType = Enums<'calendar_override_type'>
 type OverrideInfo = { name: string; type: OverrideType }
+type PrefEntry = { preference: Preference; updatedAt: string }
+/** debounce before a cleared day's log line disappears, so rapid toggling doesn't flicker */
+const LOG_REMOVE_DEBOUNCE_MS = 1500
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -22,12 +32,14 @@ const BRUSH_OPTIONS: { value: Brush; label: string }[] = [
 export function SchedulingPreferenceView() {
   const { profile } = useAuth()
   const [yearMonth, setYearMonth] = useState(preferenceEditableYearMonth())
-  const [prefMap, setPrefMap] = useState<Record<string, Preference>>({})
+  const [prefMap, setPrefMap] = useState<Record<string, PrefEntry>>({})
+  const [logMap, setLogMap] = useState<Record<string, PrefEntry>>({})
   const [overridesMap, setOverridesMap] = useState<Record<string, OverrideInfo>>({})
   const [loading, setLoading] = useState(true)
   const [brush, setBrush] = useState<Brush>('prefer_work')
   const [error, setError] = useState<string | null>(null)
   const loadSeq = useRef(0)
+  const pendingRemoval = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const editableYearMonth = preferenceEditableYearMonth()
   const editable = yearMonth === editableYearMonth
@@ -43,7 +55,7 @@ export function SchedulingPreferenceView() {
     const [{ data }, { data: overrideRows }] = await Promise.all([
       supabase
         .from('schedule_preferences')
-        .select('work_date, preference')
+        .select('work_date, preference, updated_at')
         .eq('member_id', profile.id)
         .gte('work_date', firstDay)
         .lte('work_date', lastDay),
@@ -55,9 +67,10 @@ export function SchedulingPreferenceView() {
     ])
 
     if (seq !== loadSeq.current) return
-    const map: Record<string, Preference> = {}
-    for (const r of data ?? []) map[r.work_date] = r.preference
+    const map: Record<string, PrefEntry> = {}
+    for (const r of data ?? []) map[r.work_date] = { preference: r.preference, updatedAt: r.updated_at }
     setPrefMap(map)
+    setLogMap(map)
 
     const overrides: Record<string, OverrideInfo> = {}
     for (const o of overrideRows ?? []) overrides[o.override_date] = { name: o.name, type: o.type }
@@ -70,6 +83,41 @@ export function SchedulingPreferenceView() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id, yearMonth])
+
+  // sync the displayed log from prefMap: additions/changes are immediate,
+  // but a day disappearing (cleared) is debounced so rapid toggling doesn't flicker
+  useEffect(() => {
+    setLogMap((prev) => {
+      const next = { ...prev }
+      for (const [date, entry] of Object.entries(prefMap)) {
+        next[date] = entry
+        if (pendingRemoval.current[date]) {
+          clearTimeout(pendingRemoval.current[date])
+          delete pendingRemoval.current[date]
+        }
+      }
+      for (const date of Object.keys(prev)) {
+        if (!(date in prefMap) && !pendingRemoval.current[date]) {
+          pendingRemoval.current[date] = setTimeout(() => {
+            setLogMap((p) => {
+              const n = { ...p }
+              delete n[date]
+              return n
+            })
+            delete pendingRemoval.current[date]
+          }, LOG_REMOVE_DEBOUNCE_MS)
+        }
+      }
+      return next
+    })
+  }, [prefMap])
+
+  useEffect(() => {
+    const timers = pendingRemoval.current
+    return () => {
+      Object.values(timers).forEach(clearTimeout)
+    }
+  }, [])
 
   const applyBrush = async (date: string) => {
     if (!editable || !profile) return
@@ -95,7 +143,8 @@ export function SchedulingPreferenceView() {
       return
     }
 
-    setPrefMap((prev) => ({ ...prev, [date]: brush }))
+    const optimistic: PrefEntry = { preference: brush, updatedAt: new Date().toISOString() }
+    setPrefMap((prev) => ({ ...prev, [date]: optimistic }))
     const { error } = await supabase
       .from('schedule_preferences')
       .upsert(
@@ -162,7 +211,7 @@ export function SchedulingPreferenceView() {
               {week.map((date, di) => {
                 if (!date) return <div key={di} className="border p-2 h-20 bg-gray-50" />
                 const day = Number(date.slice(-2))
-                const pref = prefMap[date]
+                const pref = prefMap[date]?.preference
                 const override = overridesMap[date]
                 const overrideFullMask = !!override && CALENDAR_OVERRIDE_FULL_MASK[override.type]
                 const overrideColorClass = override
@@ -208,6 +257,19 @@ export function SchedulingPreferenceView() {
               })}
             </div>
           ))}
+        </div>
+      )}
+
+      {!loading && (
+        <div className="mt-3 space-y-0.5">
+          {Object.entries(logMap)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([date, entry]) => (
+              <p key={date} className="text-xs text-gray-500">
+                {profile?.display_name} 於 {formatDateTime(entry.updatedAt)} 點選&lt;{formatDateSlash(date)}&gt;
+                {entry.preference === 'prefer_work' ? '偏好上班' : '偏好放假'}
+              </p>
+            ))}
         </div>
       )}
     </div>
