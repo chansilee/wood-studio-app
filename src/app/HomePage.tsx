@@ -132,7 +132,47 @@ export function HomePage() {
         }
       }
 
-      // 4. owner-only: month-start reminder to produce last month's settlement snapshot
+      // 4. owner-only: pending backfill (補登) punches awaiting approval, grouped by member + month
+      if (isOwner) {
+        const { data: pendingBackfills } = await supabase
+          .from('attendance_events')
+          .select('member_id, occurred_at')
+          .eq('is_backfill', true)
+          .eq('approval_status', 'pending')
+
+        if (pendingBackfills && pendingBackfills.length > 0) {
+          const memberIds = Array.from(new Set(pendingBackfills.map((r) => r.member_id)))
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('id, display_name')
+            .in('id', memberIds)
+          const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+
+          const groups: Record<string, { memberId: string; month: string; count: number }> = {}
+          for (const r of pendingBackfills) {
+            const taipeiDate = new Date(new Date(r.occurred_at).getTime() + 8 * 3600 * 1000)
+              .toISOString()
+              .slice(0, 7)
+            const key = `${r.member_id}-${taipeiDate}`
+            groups[key] ??= { memberId: r.member_id, month: taipeiDate, count: 0 }
+            groups[key].count += 1
+          }
+
+          const now = Date.now()
+          for (const g of Object.values(groups)) {
+            const monthNum = Number(g.month.split('-')[1])
+            const name = nameMap[g.memberId] ?? '未知成員'
+            items.push({
+              id: `backfill-pending-${g.memberId}-${g.month}`,
+              text: `你有[${g.count}]筆${name} - [${monthNum}月]待審核的補登打卡，請至[打卡系統]-該成員頁面進行審核`,
+              colorClass: 'text-red-600 font-medium',
+              sortKey: now,
+            })
+          }
+        }
+      }
+
+      // 5. owner-only: month-start reminder to produce last month's settlement snapshot
       // for members flagged 必須計算月結, persists until that snapshot exists
       if (isOwner && inMonthStartWindow) {
         const targetYearMonth = addMonths(currentYearMonth, -1)
