@@ -33,16 +33,13 @@ export function computeLeaveDisplay({
   defaultDailyHours,
   leaveRequest,
 }: {
+  /** whether this date has already settled (i.e. is strictly before today) */
   isPast: boolean
   rawStatus: 'normal' | 'abnormal'
   rawHours: number | string | null
   defaultDailyHours: number | string
   leaveRequest?: LeaveDisplayLeaveRequest
 }): LeaveDisplayResult {
-  if (!isPast) {
-    return { primaryLabel: '', colorClass: 'bg-white text-gray-300', clickable: false }
-  }
-
   if (leaveRequest?.is_manager_override) {
     return {
       primaryLabel: '主管同意提早下班',
@@ -76,6 +73,16 @@ export function computeLeaveDisplay({
           qualifies: true,
         }
       }
+      // partial-day leave can be pre-declared for a future/unsettled date; there's
+      // no attendance yet to weigh it against, so defer the qualifies verdict
+      if (!isPast) {
+        return {
+          primaryLabel: durationLabel,
+          secondaryLabel: '<尚未出勤，隔日結算>',
+          colorClass: 'bg-gray-100 text-gray-600',
+          clickable: true,
+        }
+      }
       const raw = Number(rawHours ?? 0)
       const leaveHours = Number(leaveRequest.hours ?? 0)
       const qualifies = raw + leaveHours >= Number(defaultDailyHours)
@@ -88,6 +95,14 @@ export function computeLeaveDisplay({
       }
     }
     // rejected: fall through to plain raw-status display, still clickable (owner can delete to reset)
+  }
+
+  if (!isPast) {
+    return {
+      primaryLabel: '尚未出勤',
+      colorClass: 'bg-gray-100 text-gray-600',
+      clickable: true,
+    }
   }
 
   return {

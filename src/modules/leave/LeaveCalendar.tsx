@@ -180,12 +180,13 @@ export function LeaveCalendar() {
       </div>
 
       <p className="text-xs text-gray-500 mb-3">
-        月曆依「最新公告」的排班為準；只有正常班且出勤異常的日期可以點選申報假別。
+        月曆依「最新公告」的排班為準；正常班的日期都可以點選申報假別，尚未出勤（含今日結算前）的日期會先顯示「尚未出勤」。
       </p>
 
       {selectedDate &&
         selectedMember &&
         (() => {
+          const selectedIsPast = selectedDate < today
           const selectedRawStatus =
             (attendanceMap[selectedDate]?.status as 'normal' | 'abnormal') ?? 'abnormal'
           return (
@@ -193,8 +194,11 @@ export function LeaveCalendar() {
               date={selectedDate}
               memberId={memberId}
               isOwner={isOwner}
+              isPast={selectedIsPast}
               canDeclare={memberId === profile?.id && !leaveMap[selectedDate]}
-              canUseManagerOverride={isOwner && !leaveMap[selectedDate] && selectedRawStatus === 'abnormal'}
+              canUseManagerOverride={
+                isOwner && !leaveMap[selectedDate] && selectedIsPast && selectedRawStatus === 'abnormal'
+              }
               allowDeleteRecords={allowDeleteRecords}
               leaveRequest={leaveMap[selectedDate]}
               rawStatus={selectedRawStatus}

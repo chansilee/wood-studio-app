@@ -17,6 +17,7 @@ export function LeaveDetailPanel({
   date,
   memberId,
   isOwner,
+  isPast,
   canDeclare,
   canUseManagerOverride,
   allowDeleteRecords,
@@ -31,6 +32,8 @@ export function LeaveDetailPanel({
   date: string
   memberId: string
   isOwner: boolean
+  /** whether this date has already settled (i.e. is strictly before today) */
+  isPast: boolean
   canDeclare: boolean
   /** owner-only: this day is abnormal attendance and has no existing leave/override record yet */
   canUseManagerOverride: boolean
@@ -149,7 +152,9 @@ export function LeaveDetailPanel({
         <div className="space-y-2 text-sm">
           <p className="text-gray-600">
             原：正常班{' '}
-            {rawStatus === 'abnormal' ? (
+            {!isPast ? (
+              <span className="text-gray-500">＜尚未出勤＞</span>
+            ) : rawStatus === 'abnormal' ? (
               <span className="text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞</span>
             ) : (
               <span className="text-green-700">＜出勤正常 {formatHours(rawHours)} 小時＞</span>
@@ -168,7 +173,7 @@ export function LeaveDetailPanel({
           {leaveRequest.status === 'approved' &&
             (() => {
               const display = computeLeaveDisplay({
-                isPast: true,
+                isPast,
                 rawStatus,
                 rawHours,
                 defaultDailyHours,
@@ -189,7 +194,7 @@ export function LeaveDetailPanel({
                 </p>
               )
             })()}
-          {!leaveRequest.is_manager_override && leaveRequest.duration_type === 'partial' && (
+          {isPast && !leaveRequest.is_manager_override && leaveRequest.duration_type === 'partial' && (
             <p className="text-xs text-gray-500">
               原出勤時數 {formatHours(rawHours)} + 請假 {leaveRequest.hours} 小時 ={' '}
               {(Number(rawHours ?? 0) + Number(leaveRequest.hours ?? 0)).toFixed(2)} 小時，約定工時{' '}
@@ -238,7 +243,11 @@ export function LeaveDetailPanel({
         </div>
       ) : canDeclare || canUseManagerOverride ? (
         <div className="space-y-4">
-          <p className="text-sm text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞</p>
+          {!isPast ? (
+            <p className="text-sm text-gray-500">＜尚未出勤＞</p>
+          ) : (
+            <p className="text-sm text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞</p>
+          )}
 
           {canDeclare && (
             <div>
