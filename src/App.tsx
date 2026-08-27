@@ -5,6 +5,7 @@ import { RequireRole } from '@/shared/components/RequireRole'
 import { Layout } from '@/app/Layout'
 import { HomePage } from '@/app/HomePage'
 import { NotificationHelpPage } from '@/app/NotificationHelpPage'
+import { UsageGuidePage } from '@/app/UsageGuidePage'
 import { LoginPage } from '@/modules/auth/LoginPage'
 import { RegisterPage } from '@/modules/auth/RegisterPage'
 import { MembersPage } from '@/modules/members/MembersPage'
@@ -35,6 +36,14 @@ export default function App() {
               element={
                 <RequireRole allow={['owner', 'staff', 'apprentice']}>
                   <NotificationHelpPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/usage-guide"
+              element={
+                <RequireRole allow={['owner', 'staff', 'apprentice']}>
+                  <UsageGuidePage />
                 </RequireRole>
               }
             />

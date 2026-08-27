@@ -263,9 +263,14 @@ export function HomePage() {
         <h1 className="text-xl font-semibold">
           歡迎回來，{profile.display_name}（{ROLE_LABELS[profile.role]}）
         </h1>
-        <Link to="/notifications-help" className="text-xs text-blue-700 underline whitespace-nowrap">
-          什麼時候通知？
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link to="/usage-guide" className="text-xs text-blue-700 underline whitespace-nowrap">
+            本系統該怎麼用？
+          </Link>
+          <Link to="/notifications-help" className="text-xs text-blue-700 underline whitespace-nowrap">
+            什麼時候通知？
+          </Link>
+        </div>
       </div>
       <p className="text-gray-600 mb-6">從上方導覽選擇要使用的功能。</p>
 
