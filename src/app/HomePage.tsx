@@ -63,7 +63,7 @@ export function HomePage() {
           const isFirst = allPubs.filter((p) => p.year_month === pub.year_month).length === 1
           items.push({
             id: `schedule-${ym}`,
-            text: `您收到[${monthNum}月]排班表${isFirst ? '' : '更新'}，請進[排班系統]確認排班狀態`,
+            text: `您收到[${monthNum}月]排班表${isFirst ? '' : '更新'}，請進[排班系統]->[瀏覽模式]確認班表狀態`,
             colorClass: 'text-blue-700',
             sortKey: new Date(pub.published_at).getTime(),
           })
@@ -128,7 +128,7 @@ export function HomePage() {
             const name = nameMap[g.memberId] ?? '未知成員'
             items.push({
               id: `leave-pending-${g.memberId}-${g.month}`,
-              text: `你有[${g.count}]筆${name} - [${monthNum}月]待審核的請假，請至請假系統-該成員頁面進行審核`,
+              text: `你有[${g.count}]筆${name} - [${monthNum}月]待審核的請假，請至[請假系統]-該成員頁面進行審核`,
               colorClass: 'text-red-600 font-medium',
               sortKey: now,
             })
