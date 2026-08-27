@@ -49,6 +49,12 @@ export function OwnerScheduleEditor() {
   const [brush, setBrush] = useState<ShiftStatus>('normal')
   const [carryInStreak, setCarryInStreak] = useState(0)
   const loadSeq = useRef(0)
+  // Supabase Realtime's DELETE payload only ever carries the primary key
+  // (id), never the rest of the row, even with REPLICA IDENTITY FULL — so we
+  // keep our own id -> work_date maps (built from load() + INSERT/UPDATE
+  // events) to resolve which cell a DELETE is for.
+  const scheduleIdMap = useRef<Record<string, string>>({})
+  const preferenceIdMap = useRef<Record<string, string>>({})
 
   const [year, month] = yearMonth.split('-').map(Number)
   const {
@@ -114,19 +120,24 @@ export function OwnerScheduleEditor() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'schedules', filter: `member_id=eq.${selectedMemberId}` },
         (payload) => {
-          // payload.new is `{}` (not null/undefined) on a DELETE, so `??` never
-          // falls through to payload.old — branch on eventType explicitly
-          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as
-            | { work_date?: string; status?: ShiftStatus }
-            | null
-          if (!row?.work_date || !row.work_date.startsWith(yearMonth)) return
           if (payload.eventType === 'DELETE') {
+            // Realtime's DELETE payload.old only ever has the id, never work_date —
+            // resolve it from our own id map (populated by load()/INSERT/UPDATE)
+            const id = (payload.old as { id?: string } | null)?.id
+            const workDate = id ? scheduleIdMap.current[id] : undefined
+            if (!workDate || !workDate.startsWith(yearMonth)) return
+            delete scheduleIdMap.current[id as string]
             setSavedStatus((prev) => {
               const next = { ...prev }
-              delete next[row.work_date as string]
+              delete next[workDate]
               return next
             })
-          } else if (row.status) {
+            return
+          }
+          const row = payload.new as { id: string; work_date?: string; status?: ShiftStatus } | null
+          if (!row?.work_date || !row.work_date.startsWith(yearMonth)) return
+          scheduleIdMap.current[row.id] = row.work_date
+          if (row.status) {
             setSavedStatus((prev) => ({ ...prev, [row.work_date as string]: row.status as ShiftStatus }))
           }
         }
@@ -152,27 +163,26 @@ export function OwnerScheduleEditor() {
           filter: `member_id=eq.${selectedMemberId}`,
         },
         (payload) => {
-          // TEMP DEBUG: remove once the DELETE-not-clearing issue is confirmed fixed
-          // eslint-disable-next-line no-console
-          console.log(
-            '[schedule_preferences realtime]',
-            payload.eventType,
-            'old=' + JSON.stringify(payload.old),
-            'new=' + JSON.stringify(payload.new)
-          )
-          // payload.new is `{}` (not null/undefined) on a DELETE, so `??` never
-          // falls through to payload.old — branch on eventType explicitly
-          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as
-            | { work_date?: string; preference?: 'prefer_work' | 'prefer_off' }
-            | null
-          if (!row?.work_date || !row.work_date.startsWith(yearMonth)) return
           if (payload.eventType === 'DELETE') {
+            // Realtime's DELETE payload.old only ever has the id, never work_date —
+            // resolve it from our own id map (populated by load()/INSERT/UPDATE)
+            const id = (payload.old as { id?: string } | null)?.id
+            const workDate = id ? preferenceIdMap.current[id] : undefined
+            if (!workDate || !workDate.startsWith(yearMonth)) return
+            delete preferenceIdMap.current[id as string]
             setPreferenceMap((prev) => {
               const next = { ...prev }
-              delete next[row.work_date as string]
+              delete next[workDate]
               return next
             })
-          } else if (row.preference) {
+            return
+          }
+          const row = payload.new as
+            | { id: string; work_date?: string; preference?: 'prefer_work' | 'prefer_off' }
+            | null
+          if (!row?.work_date || !row.work_date.startsWith(yearMonth)) return
+          preferenceIdMap.current[row.id] = row.work_date
+          if (row.preference) {
             setPreferenceMap((prev) => ({ ...prev, [row.work_date as string]: row.preference as 'prefer_work' | 'prefer_off' }))
           }
         }
@@ -217,7 +227,7 @@ export function OwnerScheduleEditor() {
     const [{ data: scheduleRows }, { data: overrideRows }, { data: preferenceRows }] = await Promise.all([
       supabase
         .from('schedules')
-        .select('work_date, status')
+        .select('id, work_date, status')
         .eq('member_id', selectedMemberId)
         .gte('work_date', firstDay)
         .lte('work_date', lastDay),
@@ -228,7 +238,7 @@ export function OwnerScheduleEditor() {
         .lte('override_date', lastDay),
       supabase
         .from('schedule_preferences')
-        .select('work_date, preference')
+        .select('id, work_date, preference')
         .eq('member_id', selectedMemberId)
         .gte('work_date', firstDay)
         .lte('work_date', lastDay),
@@ -244,12 +254,22 @@ export function OwnerScheduleEditor() {
     setOverridesMap(overrides)
 
     const statusMap: Record<string, ShiftStatus> = {}
-    for (const row of scheduleRows ?? []) statusMap[row.work_date] = row.status
+    const scheduleIds: Record<string, string> = {}
+    for (const row of scheduleRows ?? []) {
+      statusMap[row.work_date] = row.status
+      scheduleIds[row.id] = row.work_date
+    }
     setSavedStatus(statusMap)
+    scheduleIdMap.current = scheduleIds
 
     const prefMap: Record<string, 'prefer_work' | 'prefer_off'> = {}
-    for (const row of preferenceRows ?? []) prefMap[row.work_date] = row.preference
+    const prefIds: Record<string, string> = {}
+    for (const row of preferenceRows ?? []) {
+      prefMap[row.work_date] = row.preference
+      prefIds[row.id] = row.work_date
+    }
     setPreferenceMap(prefMap)
+    preferenceIdMap.current = prefIds
 
     setLoading(false)
   }
