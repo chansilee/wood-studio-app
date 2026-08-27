@@ -152,6 +152,9 @@ export function OwnerScheduleEditor() {
           filter: `member_id=eq.${selectedMemberId}`,
         },
         (payload) => {
+          // TEMP DEBUG: remove once the DELETE-not-clearing issue is confirmed fixed
+          // eslint-disable-next-line no-console
+          console.log('[schedule_preferences realtime]', payload)
           // payload.new is `{}` (not null/undefined) on a DELETE, so `??` never
           // falls through to payload.old — branch on eventType explicitly
           const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as
