@@ -56,6 +56,7 @@ export function LeaveCalendar() {
     supabase
       .from('leave_types')
       .select('*')
+      .eq('hidden_from_members', false)
       .order('created_at')
       .then(({ data }) => setLeaveTypes(data ?? []))
   }, [])
