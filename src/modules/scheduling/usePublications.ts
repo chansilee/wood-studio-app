@@ -41,5 +41,5 @@ export function useSchedulePublications(memberId: string | undefined, yearMonth:
     load()
   }, [load])
 
-  return { publications, loading, reload: load }
+  return { publications, loading, reload: load, setPublications }
 }

@@ -7,7 +7,15 @@ import { Legend } from './Legend'
 import { useSchedulePublications, type PublicationSnapshotEntry } from './usePublications'
 import { useWeekStart } from './useWeekStart'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
-import { checkWeeklyRestCompliance, daysInMonth, defaultSchedulingYearMonth, pad2, todayStr } from '@/shared/lib/date'
+import { fetchCarryInStreak } from './consecutiveWorkDays'
+import {
+  checkMaxConsecutiveWorkDays,
+  checkWeeklyRestCompliance,
+  daysInMonth,
+  defaultSchedulingYearMonth,
+  pad2,
+  todayStr,
+} from '@/shared/lib/date'
 import { CALENDAR_OVERRIDE_FULL_MASK, SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
 import type { Enums, Tables } from '@/shared/types/database'
 
@@ -38,12 +46,15 @@ export function OwnerScheduleEditor() {
   const [reverting, setReverting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [brush, setBrush] = useState<ShiftStatus>('normal')
+  const [carryInStreak, setCarryInStreak] = useState(0)
 
   const [year, month] = yearMonth.split('-').map(Number)
-  const { publications, reload: reloadPublications } = useSchedulePublications(
-    selectedMemberId || undefined,
-    yearMonth
-  )
+  const {
+    publications,
+    loading: publicationsLoading,
+    reload: reloadPublications,
+    setPublications,
+  } = useSchedulePublications(selectedMemberId || undefined, yearMonth)
 
   const selectedMember = members.find((m) => m.id === selectedMemberId)
   const { weekStartWeekday, shiftWeekStart } = useWeekStart(
@@ -78,6 +89,19 @@ export function OwnerScheduleEditor() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMemberId, yearMonth])
+
+  useEffect(() => {
+    if (!selectedMemberId) {
+      setCarryInStreak(0)
+      return
+    }
+    fetchCarryInStreak({
+      memberId: selectedMemberId,
+      yearMonth,
+      hireDate: selectedMember?.hire_date,
+      source: 'draft',
+    }).then(setCarryInStreak)
+  }, [selectedMemberId, yearMonth, selectedMember?.hire_date])
 
   // realtime: keep 暫態 in sync across owner sessions editing the same member+month
   useEffect(() => {
@@ -200,18 +224,30 @@ export function OwnerScheduleEditor() {
       .filter(([date]) => !isFullMaskDate(date))
       .map(([work_date, status]) => ({ work_date, status }))
 
-    const { error } = await supabase.from('schedule_publications').insert({
-      member_id: selectedMemberId,
-      year_month: `${yearMonth}-01`,
-      published_by: session.user.id,
-      snapshot: rows,
-    })
+    const { data: inserted, error } = await supabase
+      .from('schedule_publications')
+      .insert({
+        member_id: selectedMemberId,
+        year_month: `${yearMonth}-01`,
+        published_by: session.user.id,
+        snapshot: rows,
+      })
+      .select()
+      .single()
     setPublishing(false)
     if (error) {
       setMessage(`公告失敗：${error.message}`)
       return
     }
     setMessage('已公告給使用者')
+    // update local state immediately rather than waiting on a refetch/realtime
+    // round-trip, so the status line and buttons below reflect it right away
+    if (inserted) {
+      setPublications((prev) => [
+        { ...inserted, published_by_name: profile?.display_name },
+        ...prev,
+      ])
+    }
     reloadPublications()
   }
 
@@ -229,7 +265,14 @@ export function OwnerScheduleEditor() {
   }
 
   const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled
-  const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, savedStatus)
+  const isCompliant = checkWeeklyRestCompliance(
+    year,
+    month,
+    weekStartWeekday,
+    savedStatus,
+    selectedMember?.hire_date
+  )
+  const isConsecutiveCompliant = checkMaxConsecutiveWorkDays(year, month, savedStatus, carryInStreak)
 
   const currentSnapshotMap = Object.fromEntries(
     Object.entries(savedStatus).filter(([date]) => !isFullMaskDate(date))
@@ -280,7 +323,6 @@ export function OwnerScheduleEditor() {
       setMessage(`還原失敗：${(upsertError ?? deleteError)?.message}`)
       return
     }
-    setMessage('已還原為最新公告狀態')
     setSavedStatus(publishedMap)
   }
 
@@ -312,7 +354,7 @@ export function OwnerScheduleEditor() {
 
       {message && <p className="text-sm mb-3 text-green-700">{message}</p>}
 
-      {loading ? (
+      {loading || publicationsLoading ? (
         <div>載入中…</div>
       ) : (
         <>
@@ -371,9 +413,22 @@ export function OwnerScheduleEditor() {
                 </div>
               )}
 
-              <p className={`text-sm mt-2 ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
-                {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
-              </p>
+              {isCompliant && isConsecutiveCompliant ? (
+                <p className="text-sm mt-2 text-green-700">All good, 本月符合一例一休！</p>
+              ) : (
+                <>
+                  {!isCompliant && (
+                    <p className="text-sm mt-2 text-red-600 font-medium">
+                      Error &gt;&gt; 本月有完整周缺失一例一休，請檢查！
+                    </p>
+                  )}
+                  {!isConsecutiveCompliant && (
+                    <p className="text-sm mt-2 text-red-600 font-medium">
+                      Error &gt;&gt; 不可連續工作超過六天，請檢查！
+                    </p>
+                  )}
+                </>
+              )}
             </>
           )}
 
@@ -399,7 +454,12 @@ export function OwnerScheduleEditor() {
                 )}
                 <button
                   onClick={handlePublish}
-                  disabled={publishing || loading}
+                  disabled={publishing || loading || (showWeekStart && (!isCompliant || !isConsecutiveCompliant))}
+                  title={
+                    showWeekStart && (!isCompliant || !isConsecutiveCompliant)
+                      ? '請先修正上方一例一休/連續工作日的錯誤，才能公告給使用者'
+                      : undefined
+                  }
                   className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
                 >
                   {publishing ? '公告中…' : '>>公告給使用者'}

@@ -35,6 +35,13 @@ export function prevDateStr(dateStr: string): string {
   return toDateStr(date.getFullYear(), date.getMonth() + 1, date.getDate())
 }
 
+/** Adds `delta` days to a 'YYYY-MM-DD' string, handling month/year rollover */
+export function addDays(dateStr: string, delta: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d + delta)
+  return toDateStr(date.getFullYear(), date.getMonth() + 1, date.getDate())
+}
+
 /** Adds `delta` months to a 'YYYY-MM' string, handling year rollover */
 export function addMonths(yearMonth: string, delta: number): string {
   const [y, m] = yearMonth.split('-').map(Number)
@@ -92,14 +99,16 @@ export function weekdayFromDateStr(dateStr: string): number {
 /**
  * Checks whether every calendar week fully contained within the given month
  * (per weekStartWeekday) has at least one '例假' (regular_off) and one
- * '休假' (special_off) day. Weeks that spill into the previous/next month
- * are not "complete" and are skipped, per spec.
+ * '休假' (special_off) day. Weeks that spill into the previous/next month,
+ * or that start before the member's hire date (never schedulable, so
+ * always empty), are not "complete" and are skipped, per spec.
  */
 export function checkWeeklyRestCompliance(
   year: number,
   month: number,
   weekStartWeekday: number,
-  statusMap: Record<string, string | undefined>
+  statusMap: Record<string, string | undefined>,
+  hireDate?: string | null
 ): boolean {
   const total = daysInMonth(year, month)
   const lastDate = new Date(year, month - 1, total)
@@ -114,6 +123,12 @@ export function checkWeeklyRestCompliance(
     const weekEnd = new Date(cursor)
     weekEnd.setDate(weekEnd.getDate() + 6)
     if (weekEnd > lastDate) break
+
+    const weekStartStr = toDateStr(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate())
+    if (hireDate && weekStartStr < hireDate) {
+      cursor.setDate(cursor.getDate() + 7)
+      continue
+    }
 
     let hasRegularOff = false
     let hasSpecialOff = false
@@ -131,4 +146,50 @@ export function checkWeeklyRestCompliance(
   }
 
   return compliant
+}
+
+/**
+ * Counts consecutive '正常班' (normal) days immediately before `beforeDate`,
+ * walking backward through `statusMap`. Stops at the first non-normal or
+ * missing day, or once `cursor` would fall before `hireDate` (exclusive).
+ */
+export function countCarryInStreak(
+  beforeDate: string,
+  statusMap: Record<string, string | undefined>,
+  hireDate?: string | null
+): number {
+  let streak = 0
+  let cursor = prevDateStr(beforeDate)
+  while (!hireDate || cursor >= hireDate) {
+    if (statusMap[cursor] !== 'normal') break
+    streak += 1
+    cursor = prevDateStr(cursor)
+  }
+  return streak
+}
+
+/**
+ * Checks that no run of '正常班' days within the month (continuing a streak
+ * carried in from before the 1st, e.g. from the previous month) reaches 7.
+ * `carryInStreak` is the count of consecutive normal days immediately
+ * preceding the 1st of this month (see countCarryInStreak).
+ */
+export function checkMaxConsecutiveWorkDays(
+  year: number,
+  month: number,
+  statusMap: Record<string, string | undefined>,
+  carryInStreak: number
+): boolean {
+  const total = daysInMonth(year, month)
+  let streak = carryInStreak
+  for (let day = 1; day <= total; day++) {
+    const key = toDateStr(year, month, day)
+    if (statusMap[key] === 'normal') {
+      streak += 1
+      if (streak > 6) return false
+    } else {
+      streak = 0
+    }
+  }
+  return true
 }

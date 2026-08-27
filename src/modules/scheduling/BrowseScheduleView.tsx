@@ -9,7 +9,9 @@ import { useSchedulePublications, type PublicationSnapshotEntry } from './usePub
 import { useScheduleConfirmation } from './useScheduleConfirmation'
 import { useWeekStart } from './useWeekStart'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
+import { fetchCarryInStreak } from './consecutiveWorkDays'
 import {
+  checkMaxConsecutiveWorkDays,
   checkWeeklyRestCompliance,
   daysInMonth,
   defaultSchedulingYearMonth,
@@ -35,6 +37,7 @@ export function BrowseScheduleView() {
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [carryInStreak, setCarryInStreak] = useState(0)
 
   const [year, month] = yearMonth.split('-').map(Number)
   const memberId = isOwner ? selectedMemberId : (profile?.id ?? '')
@@ -78,6 +81,19 @@ export function BrowseScheduleView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberId, yearMonth])
 
+  useEffect(() => {
+    if (!memberId) {
+      setCarryInStreak(0)
+      return
+    }
+    fetchCarryInStreak({
+      memberId,
+      yearMonth,
+      hireDate: selectedMember?.hire_date,
+      source: 'published',
+    }).then(setCarryInStreak)
+  }, [memberId, yearMonth, selectedMember?.hire_date])
+
   const load = async () => {
     setLoading(true)
     const firstDay = `${year}-${pad2(month)}-01`
@@ -119,7 +135,14 @@ export function BrowseScheduleView() {
   }
 
   const showWeekStart = !!selectedMember?.hire_date && !!selectedMember?.weekly_rest_check_enabled
-  const isCompliant = checkWeeklyRestCompliance(year, month, weekStartWeekday, displayStatus)
+  const isCompliant = checkWeeklyRestCompliance(
+    year,
+    month,
+    weekStartWeekday,
+    displayStatus,
+    selectedMember?.hire_date
+  )
+  const isConsecutiveCompliant = checkMaxConsecutiveWorkDays(year, month, displayStatus, carryInStreak)
   const isOwnSchedule = !!profile && memberId === profile.id
 
   const handleConfirm = async () => {
@@ -176,11 +199,23 @@ export function BrowseScheduleView() {
               {(showWeekStart || (isOwnSchedule && isViewingLatest && !confirmationLoading)) && (
                 <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
                   <div>
-                    {showWeekStart && (
-                      <p className={`text-sm ${isCompliant ? 'text-green-700' : 'text-red-600 font-medium'}`}>
-                        {isCompliant ? '本月符合一例一休！' : '本月有完整周缺失一例一休，請檢查！'}
-                      </p>
-                    )}
+                    {showWeekStart &&
+                      (isCompliant && isConsecutiveCompliant ? (
+                        <p className="text-sm text-green-700">All good, 本月符合一例一休！</p>
+                      ) : (
+                        <>
+                          {!isCompliant && (
+                            <p className="text-sm text-red-600 font-medium">
+                              Error &gt;&gt; 本月有完整周缺失一例一休，請檢查！
+                            </p>
+                          )}
+                          {!isConsecutiveCompliant && (
+                            <p className="text-sm text-red-600 font-medium">
+                              Error &gt;&gt; 不可連續工作超過六天，請檢查！
+                            </p>
+                          )}
+                        </>
+                      ))}
                   </div>
                   <div>
                     {isOwnSchedule && isViewingLatest && !confirmationLoading && (
