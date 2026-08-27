@@ -183,25 +183,76 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          description: string
+          hidden_from_members: boolean
           id: string
           name: string
+          pay_coefficient: number
         }
         Insert: {
           created_at?: string
           created_by?: string | null
+          description?: string
+          hidden_from_members?: boolean
           id?: string
           name: string
+          pay_coefficient?: number
         }
         Update: {
           created_at?: string
           created_by?: string | null
+          description?: string
+          hidden_from_members?: boolean
           id?: string
           name?: string
+          pay_coefficient?: number
         }
         Relationships: [
           {
             foreignKeyName: "leave_types_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_wage_rates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          effective_date: string
+          hourly_wage: number
+          id: string
+          member_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          effective_date: string
+          hourly_wage: number
+          id?: string
+          member_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          hourly_wage?: number
+          id?: string
+          member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_wage_rates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_wage_rates_member_id_fkey"
+            columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]

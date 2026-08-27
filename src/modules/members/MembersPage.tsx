@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { ROLE_LABELS, type MemberRole } from '@/shared/constants/roles'
+import { MemberWageTable } from './MemberWageTable'
 import type { Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -12,6 +13,7 @@ export function MembersPage() {
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [expandedWageId, setExpandedWageId] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -134,11 +136,13 @@ export function MembersPage() {
               <th className="py-2 pr-4">一例一休檢查</th>
               <th className="py-2 pr-4">必須公告班表</th>
               <th className="py-2 pr-4">必須計算月結</th>
+              <th className="py-2 pr-4"></th>
             </tr>
           </thead>
           <tbody>
             {members.map((m) => (
-              <tr key={m.id} className="border-b">
+              <Fragment key={m.id}>
+              <tr className="border-b">
                 <td className="py-2 pr-4">{m.display_name || '(未設定)'}</td>
                 <td className="py-2 pr-4">{m.email}</td>
                 <td className="py-2 pr-4">
@@ -200,7 +204,24 @@ export function MembersPage() {
                     onChange={(e) => updateMustCalculateSettlement(m.id, e.target.checked)}
                   />
                 </td>
+                <td className="py-2 pr-4">
+                  <button
+                    onClick={() => setExpandedWageId((prev) => (prev === m.id ? null : m.id))}
+                    className="border rounded w-7 h-7 text-sm text-gray-600 hover:bg-gray-50"
+                  >
+                    $
+                  </button>
+                </td>
               </tr>
+              {expandedWageId === m.id && (
+                <tr className="border-b bg-gray-50">
+                  <td colSpan={9} className="py-3 px-4">
+                    <p className="text-xs text-gray-500 mb-2">{m.display_name || '(未設定)'} - 約定月薪表</p>
+                    <MemberWageTable memberId={m.id} hireDate={m.hire_date} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
