@@ -49,6 +49,7 @@ export function AttendanceSettings() {
         geofence_radius_m: settings.geofence_radius_m,
         geofence_disabled: settings.geofence_disabled,
         allow_delete_records: settings.allow_delete_records,
+        disable_punch_on_non_workday: settings.disable_punch_on_non_workday,
         lunch_start: settings.lunch_start,
         lunch_end: settings.lunch_end,
         dinner_start: settings.dinner_start,
@@ -133,6 +134,15 @@ export function AttendanceSettings() {
             onChange={(e) => setSettings({ ...settings, allow_delete_records: e.target.checked })}
           />
           啟用刪除紀錄功能（打勾後，負責人可在「本日打卡紀錄」與「歷史打卡紀錄」刪除任一筆打卡，不限當天）
+        </label>
+
+        <label className="flex items-center gap-2 mt-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.disable_punch_on_non_workday}
+            onChange={(e) => setSettings({ ...settings, disable_punch_on_non_workday: e.target.checked })}
+          />
+          當非上班日時，打卡按鈕直接不能點擊（打勾後，非「正常班」當天按鈕會變灰且無法點擊；關閉則按鈕維持原色，按下去後才判別）
         </label>
       </section>
 

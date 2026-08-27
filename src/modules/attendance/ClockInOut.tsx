@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
+import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { prevDateStr, todayStr } from '@/shared/lib/date'
 import type { Enums } from '@/shared/types/database'
 
@@ -8,8 +9,10 @@ type EventType = Enums<'attendance_event_type'>
 
 export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
   const { profile } = useAuth()
+  const { settings: orgSettings } = useOrgSettings()
   const [busy, setBusy] = useState<'in' | 'out' | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [isWorkday, setIsWorkday] = useState<boolean | null>(null)
 
   const [showBackfill, setShowBackfill] = useState(false)
   const [backfillType, setBackfillType] = useState<EventType>('clock_in')
@@ -20,6 +23,17 @@ export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
   )
 
   const maxBackfillDateTime = `${prevDateStr(todayStr())}T23:59`
+
+  useEffect(() => {
+    if (!profile) return
+    supabase
+      .from('schedules')
+      .select('status')
+      .eq('member_id', profile.id)
+      .eq('work_date', todayStr())
+      .maybeSingle()
+      .then(({ data }) => setIsWorkday(data?.status === 'normal'))
+  }, [profile])
 
   const punch = (eventType: EventType) => {
     if (!profile) return
@@ -86,20 +100,39 @@ export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
     onRecorded?.()
   }
 
+  // while workday status / settings are still loading, stay neutral rather than
+  // briefly flashing the colored buttons before possibly downgrading to gray
+  const dataReady = isWorkday !== null && !!orgSettings
+  const punchDisabledByPolicy =
+    !dataReady || (isWorkday === false && !!orgSettings?.disable_punch_on_non_workday)
+
   return (
     <div className="mb-6">
+      {isWorkday !== null && (
+        <p className={`mb-2 font-bold ${isWorkday ? 'text-green-700' : 'text-red-600'}`}>
+          {isWorkday ? '今天是您的上班日！' : '今天「不是」您的上班日！'}
+        </p>
+      )}
       <div className="flex gap-3">
         <button
           onClick={() => punch('clock_in')}
-          disabled={busy !== null}
-          className="flex-1 bg-green-600 text-white rounded-lg py-6 text-lg font-medium disabled:opacity-50"
+          disabled={busy !== null || punchDisabledByPolicy}
+          className={`flex-1 rounded-lg py-6 text-lg font-medium disabled:opacity-50 ${
+            punchDisabledByPolicy
+              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              : 'bg-green-600 text-white'
+          }`}
         >
           {busy === 'in' ? '打卡中…' : '點我打卡上班'}
         </button>
         <button
           onClick={() => punch('clock_out')}
-          disabled={busy !== null}
-          className="flex-1 bg-orange-600 text-white rounded-lg py-6 text-lg font-medium disabled:opacity-50"
+          disabled={busy !== null || punchDisabledByPolicy}
+          className={`flex-1 rounded-lg py-6 text-lg font-medium disabled:opacity-50 ${
+            punchDisabledByPolicy
+              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              : 'bg-orange-600 text-white'
+          }`}
         >
           {busy === 'out' ? '打卡中…' : '點我打卡下班'}
         </button>

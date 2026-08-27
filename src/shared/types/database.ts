@@ -260,6 +260,7 @@ export type Database = {
           company_lng: number | null
           dinner_end: string | null
           dinner_start: string | null
+          disable_punch_on_non_workday: boolean
           enable_week_start_adjust: boolean
           geofence_disabled: boolean
           geofence_radius_m: number
@@ -280,6 +281,7 @@ export type Database = {
           company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
+          disable_punch_on_non_workday?: boolean
           enable_week_start_adjust?: boolean
           geofence_disabled?: boolean
           geofence_radius_m?: number
@@ -300,6 +302,7 @@ export type Database = {
           company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
+          disable_punch_on_non_workday?: boolean
           enable_week_start_adjust?: boolean
           geofence_disabled?: boolean
           geofence_radius_m?: number
