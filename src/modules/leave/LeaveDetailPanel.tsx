@@ -20,7 +20,6 @@ export function LeaveDetailPanel({
   isPast,
   canDeclare,
   canUseManagerOverride,
-  allowDeleteRecords,
   leaveRequest,
   rawStatus,
   rawHours,
@@ -37,8 +36,6 @@ export function LeaveDetailPanel({
   canDeclare: boolean
   /** owner-only: this day is abnormal attendance and has no existing leave/override record yet */
   canUseManagerOverride: boolean
-  /** org_settings.allow_delete_records — gates deletion of manager-override records */
-  allowDeleteRecords: boolean
   leaveRequest?: LeaveRequestRow
   rawStatus: 'normal' | 'abnormal'
   rawHours: number | null
@@ -133,7 +130,7 @@ export function LeaveDetailPanel({
 
   const canDelete = leaveRequest
     ? leaveRequest.is_manager_override
-      ? isOwner && allowDeleteRecords
+      ? isOwner
       : isOwner || memberId === profile?.id
     : false
 
