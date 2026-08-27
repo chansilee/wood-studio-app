@@ -33,36 +33,40 @@ export function HomePage() {
       const items: NotificationItem[] = []
 
       // 1. "you received a schedule" for the viewer's own member_id.
-      // Relevant months: this month always, next month once we're past the 25th.
-      const relevantMonths = [currentYearMonth]
-      if (inMonthEndWindow) relevantMonths.push(addMonths(currentYearMonth, 1))
+      // Owners can publish any month (including pre-scheduling far in advance), so
+      // check every month's latest publication rather than assuming just this/next month.
+      const { data: allPubs } = await supabase
+        .from('schedule_publications')
+        .select('id, year_month, published_at')
+        .eq('member_id', profile.id)
+        .order('published_at', { ascending: false })
 
-      for (const ym of relevantMonths) {
-        const { data: pubs } = await supabase
-          .from('schedule_publications')
-          .select('id, published_at')
-          .eq('member_id', profile.id)
-          .eq('year_month', `${ym}-01`)
-          .order('published_at', { ascending: false })
+      if (allPubs && allPubs.length > 0) {
+        const latestByMonth = new Map<string, { id: string; year_month: string; published_at: string }>()
+        for (const p of allPubs) {
+          if (!latestByMonth.has(p.year_month)) latestByMonth.set(p.year_month, p)
+        }
+        const latestPubs = Array.from(latestByMonth.values())
+        const { data: confirmations } = await supabase
+          .from('schedule_confirmations')
+          .select('publication_id')
+          .in(
+            'publication_id',
+            latestPubs.map((p) => p.id)
+          )
+        const confirmedIds = new Set((confirmations ?? []).map((c) => c.publication_id))
 
-        if (pubs && pubs.length > 0) {
-          const latest = pubs[0]
-          const { data: confirmation } = await supabase
-            .from('schedule_confirmations')
-            .select('id')
-            .eq('publication_id', latest.id)
-            .maybeSingle()
-
-          if (!confirmation) {
-            const monthNum = Number(ym.split('-')[1])
-            const isFirst = pubs.length === 1
-            items.push({
-              id: `schedule-${ym}`,
-              text: `您收到[${monthNum}月]排班表${isFirst ? '' : '更新'}，請進[排班系統]確認排班狀態`,
-              colorClass: 'text-blue-700',
-              sortKey: new Date(latest.published_at).getTime(),
-            })
-          }
+        for (const pub of latestPubs) {
+          if (confirmedIds.has(pub.id)) continue
+          const ym = pub.year_month.slice(0, 7)
+          const monthNum = Number(ym.split('-')[1])
+          const isFirst = allPubs.filter((p) => p.year_month === pub.year_month).length === 1
+          items.push({
+            id: `schedule-${ym}`,
+            text: `您收到[${monthNum}月]排班表${isFirst ? '' : '更新'}，請進[排班系統]確認排班狀態`,
+            colorClass: 'text-blue-700',
+            sortKey: new Date(pub.published_at).getTime(),
+          })
         }
       }
 
