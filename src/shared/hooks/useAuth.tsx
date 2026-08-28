@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/shared/lib/supabase'
 import type { Tables } from '@/shared/types/database'
@@ -18,6 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
 
   const loadProfile = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
@@ -38,12 +40,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession)
       if (newSession?.user.id) {
         loadProfile(newSession.user.id)
       } else {
         setProfile(null)
+      }
+      // a password-reset email link lands here with a recovery session; HashRouter
+      // can't route straight to it (the token itself arrives as a "#..." fragment),
+      // so redirect once the client has parsed it out of the URL
+      if (event === 'PASSWORD_RECOVERY') {
+        navigate('/reset-password', { replace: true })
       }
     })
 

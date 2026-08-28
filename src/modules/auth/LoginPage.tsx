@@ -54,6 +54,11 @@ export function LoginPage() {
       <p className="text-sm text-gray-600 mt-4">
         還沒有帳號？<Link to="/register" className="underline">前往註冊</Link>
       </p>
+      <p className="text-sm text-gray-600 mt-1">
+        <Link to="/forgot-password" className="underline">
+          忘記密碼？
+        </Link>
+      </p>
     </div>
   )
 }

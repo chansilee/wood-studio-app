@@ -8,6 +8,8 @@ import { NotificationHelpPage } from '@/app/NotificationHelpPage'
 import { UsageGuidePage } from '@/app/UsageGuidePage'
 import { LoginPage } from '@/modules/auth/LoginPage'
 import { RegisterPage } from '@/modules/auth/RegisterPage'
+import { ForgotPasswordPage } from '@/modules/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/modules/auth/ResetPasswordPage'
 import { MembersPage } from '@/modules/members/MembersPage'
 import { SchedulingPage } from '@/modules/scheduling/SchedulingPage'
 import { AttendancePage } from '@/modules/attendance/AttendancePage'
@@ -23,6 +25,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route
             element={
               <RequireAuth>
