@@ -20,6 +20,7 @@ import {
   todayStr,
 } from '@/shared/lib/date'
 import { CALENDAR_OVERRIDE_FULL_MASK } from '@/shared/constants/roles'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
@@ -174,7 +175,7 @@ export function BrowseScheduleView() {
             >
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.display_name}
+                  {effectiveDisplayName(m)}
                   {m.id === profile?.id ? '（我）' : ''}
                 </option>
               ))}

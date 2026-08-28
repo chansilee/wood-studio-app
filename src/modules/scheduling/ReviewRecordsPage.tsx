@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { formatDateTime } from '@/shared/lib/date'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Tables } from '@/shared/types/database'
 
 type Confirmation = Tables<'schedule_confirmations'> & {
@@ -28,14 +29,14 @@ export function ReviewRecordsPage() {
 
     const [{ data: profs }, { data: pubs }] = await Promise.all([
       memberIds.length > 0
-        ? supabase.from('profiles').select('id, display_name').in('id', memberIds)
-        : Promise.resolve({ data: [] as { id: string; display_name: string }[] }),
+        ? supabase.from('profiles').select('id, display_name, preferred_display_name').in('id', memberIds)
+        : Promise.resolve({ data: [] as { id: string; display_name: string; preferred_display_name: string | null }[] }),
       pubIds.length > 0
         ? supabase.from('schedule_publications').select('id, year_month').in('id', pubIds)
         : Promise.resolve({ data: [] as { id: string; year_month: string }[] }),
     ])
 
-    const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+    const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
     const monthMap = Object.fromEntries((pubs ?? []).map((p) => [p.id, p.year_month]))
 
     setRecords(

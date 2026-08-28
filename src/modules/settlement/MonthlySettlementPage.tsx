@@ -7,6 +7,7 @@ import { formatHours } from '@/modules/leave/leaveDisplay'
 import { MonthSelector } from '@/shared/components/MonthSelector'
 import { SettlementArchive } from './SettlementArchive'
 import { SettlementSettings } from './SettlementSettings'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import {
   addMonths,
   daysInMonth,
@@ -296,7 +297,7 @@ export function MonthlySettlementPage() {
                 >
                   {members.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.display_name}
+                      {effectiveDisplayName(m)}
                       {m.id === profile?.id ? '（我）' : ''}
                     </option>
                   ))}

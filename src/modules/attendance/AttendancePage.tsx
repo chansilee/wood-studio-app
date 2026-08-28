@@ -8,6 +8,7 @@ import { AttendanceHistory } from './AttendanceHistory'
 import { AttendanceSettings } from './AttendanceSettings'
 import { MonthSelector } from '@/shared/components/MonthSelector'
 import { todayStr } from '@/shared/lib/date'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -92,7 +93,7 @@ export function AttendancePage() {
                 >
                   {members.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.display_name}
+                      {effectiveDisplayName(m)}
                       {m.id === profile?.id ? '（我）' : ''}
                     </option>
                   ))}
@@ -108,7 +109,7 @@ export function AttendancePage() {
             <>
               <TodayPunches
                 memberId={viewingMemberId}
-                memberName={viewingMember.display_name}
+                memberName={effectiveDisplayName(viewingMember)}
                 canDelete={canDelete}
                 refreshKey={refreshKey}
                 onDeleted={bump}

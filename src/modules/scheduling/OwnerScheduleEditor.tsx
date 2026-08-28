@@ -19,6 +19,7 @@ import {
   todayStr,
 } from '@/shared/lib/date'
 import { CALENDAR_OVERRIDE_FULL_MASK, SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
@@ -379,7 +380,7 @@ export function OwnerScheduleEditor() {
     // round-trip, so the status line and buttons below reflect it right away
     if (inserted) {
       setPublications((prev) => [
-        { ...inserted, published_by_name: profile?.display_name },
+        { ...inserted, published_by_name: profile ? effectiveDisplayName(profile) : undefined },
         ...prev,
       ])
     }
@@ -477,7 +478,7 @@ export function OwnerScheduleEditor() {
           >
             {members.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.display_name}
+                {effectiveDisplayName(m)}
                 {m.id === profile?.id ? '（我）' : ''}
               </option>
             ))}
@@ -613,7 +614,7 @@ export function OwnerScheduleEditor() {
 
           {selectedMember && (
             <div className="mt-4 border border-dashed border-gray-300 rounded p-3">
-              <p className="text-sm font-bold mb-1">{selectedMember.display_name}偏好回報：</p>
+              <p className="text-sm font-bold mb-1">{effectiveDisplayName(selectedMember)}偏好回報：</p>
               {Object.keys(preferenceLogMap).length === 0 ? (
                 <p className="text-xs text-gray-400">目前尚無偏好回報</p>
               ) : (
@@ -622,7 +623,7 @@ export function OwnerScheduleEditor() {
                     .sort(([a], [b]) => a.localeCompare(b))
                     .map(([date, entry]) => (
                       <p key={date} className="text-xs text-gray-500">
-                        {selectedMember.display_name} 於 {formatDateTime(entry.updatedAt)} 點選&lt;
+                        {effectiveDisplayName(selectedMember)} 於 {formatDateTime(entry.updatedAt)} 點選&lt;
                         {formatDateSlash(date)}&gt;{entry.preference === 'prefer_work' ? '偏好上班' : '偏好放假'}
                       </p>
                     ))}

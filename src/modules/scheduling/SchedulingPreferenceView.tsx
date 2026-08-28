@@ -11,6 +11,7 @@ import {
   preferenceEditableYearMonth,
 } from '@/shared/lib/date'
 import { CALENDAR_OVERRIDE_FULL_MASK, CALENDAR_OVERRIDE_LABELS } from '@/shared/constants/roles'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Enums } from '@/shared/types/database'
 
 type Preference = Enums<'schedule_preference_type'>
@@ -266,7 +267,8 @@ export function SchedulingPreferenceView() {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([date, entry]) => (
               <p key={date} className="text-xs text-gray-500">
-                {profile?.display_name} 於 {formatDateTime(entry.updatedAt)} 點選&lt;{formatDateSlash(date)}&gt;
+                {profile && effectiveDisplayName(profile)} 於 {formatDateTime(entry.updatedAt)} 點選&lt;
+                {formatDateSlash(date)}&gt;
                 {entry.preference === 'prefer_work' ? '偏好上班' : '偏好放假'}
               </p>
             ))}

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { ROLE_LABELS, type MemberRole } from '@/shared/constants/roles'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { MemberWageTable } from './MemberWageTable'
 import type { Tables } from '@/shared/types/database'
 
@@ -115,6 +116,21 @@ export function MembersPage() {
     setSavingId(null)
   }
 
+  const updatePreferredDisplayName = async (id: string, name: string) => {
+    setSavingId(id)
+    setError(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ preferred_display_name: name.trim() || null })
+      .eq('id', id)
+    if (error) setError(error.message)
+    else
+      setMembers((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, preferred_display_name: name.trim() || null } : m))
+      )
+    setSavingId(null)
+  }
+
   if (loading) return <div className="p-6">載入中…</div>
 
   return (
@@ -123,12 +139,16 @@ export function MembersPage() {
       <p className="text-sm text-gray-600 mb-4">
         新註冊的帳號預設為「訪客」，請在此指派正確身分。只有負責人可以修改身分、約定每日工時、到職日與一例一休檢查設定。
       </p>
+      <p className="text-sm text-gray-600 mb-4">
+        「顯示名稱」是帳號自己設定的名字；填寫「本名（管理用）」後，全站（含該成員自己看到的畫面）都會改顯示這個名字，留空則維持顯示帳號自己設定的名字。
+      </p>
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="text-left border-b">
-              <th className="py-2 pr-4">姓名</th>
+              <th className="py-2 pr-4">顯示名稱</th>
+              <th className="py-2 pr-4">本名（管理用）</th>
               <th className="py-2 pr-4">Email</th>
               <th className="py-2 pr-4">身分</th>
               <th className="py-2 pr-4">約定每日工時</th>
@@ -144,6 +164,16 @@ export function MembersPage() {
               <Fragment key={m.id}>
               <tr className="border-b">
                 <td className="py-2 pr-4">{m.display_name || '(未設定)'}</td>
+                <td className="py-2 pr-4">
+                  <input
+                    type="text"
+                    defaultValue={m.preferred_display_name ?? ''}
+                    placeholder="留空 = 使用顯示名稱"
+                    disabled={savingId === m.id}
+                    onBlur={(e) => updatePreferredDisplayName(m.id, e.target.value)}
+                    className="border rounded px-2 py-1 w-32"
+                  />
+                </td>
                 <td className="py-2 pr-4">{m.email}</td>
                 <td className="py-2 pr-4">
                   <select
@@ -215,8 +245,8 @@ export function MembersPage() {
               </tr>
               {expandedWageId === m.id && (
                 <tr className="border-b bg-gray-50">
-                  <td colSpan={9} className="py-3 px-4">
-                    <p className="text-xs text-gray-500 mb-2">{m.display_name || '(未設定)'} - 約定月薪表</p>
+                  <td colSpan={10} className="py-3 px-4">
+                    <p className="text-xs text-gray-500 mb-2">{effectiveDisplayName(m)} - 約定月薪表</p>
                     <MemberWageTable memberId={m.id} hireDate={m.hire_date} />
                   </td>
                 </tr>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { formatDateSlash, formatDateTime } from '@/shared/lib/date'
 import { formatHours } from '@/modules/leave/leaveDisplay'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Tables } from '@/shared/types/database'
 
 type SnapshotRow = Tables<'settlement_snapshots'> & { member_name?: string; created_by_name?: string }
@@ -40,9 +41,9 @@ export function SettlementArchive() {
     const memberIds = Array.from(new Set(rows.flatMap((r) => [r.member_id, r.created_by])))
     const { data: profs } =
       memberIds.length > 0
-        ? await supabase.from('profiles').select('id, display_name').in('id', memberIds)
-        : { data: [] as { id: string; display_name: string }[] }
-    const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+        ? await supabase.from('profiles').select('id, display_name, preferred_display_name').in('id', memberIds)
+        : { data: [] as { id: string; display_name: string; preferred_display_name: string | null }[] }
+    const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
 
     setRecords(
       rows.map((r) => ({

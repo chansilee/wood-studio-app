@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { daysInMonth, pad2, todayStr } from '@/shared/lib/date'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type EventRow = Tables<'attendance_events'>
@@ -74,9 +75,9 @@ export function HistoricalPunches({
     if (reviewerIds.length > 0) {
       const { data: profs } = await supabase
         .from('profiles')
-        .select('id, display_name')
+        .select('id, display_name, preferred_display_name')
         .in('id', reviewerIds)
-      names = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+      names = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
     }
     setRows(
       eventRows.map((r) => ({ ...r, reviewer_name: r.reviewed_by ? names[r.reviewed_by] : undefined }))

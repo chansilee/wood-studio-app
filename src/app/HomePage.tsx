@@ -4,6 +4,7 @@ import { useAuth } from '@/shared/hooks/useAuth'
 import { supabase } from '@/shared/lib/supabase'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { ROLE_LABELS } from '@/shared/constants/roles'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { GuestNotice } from '@/modules/auth/GuestNotice'
 import { addMonths, todayStr } from '@/shared/lib/date'
 
@@ -75,7 +76,7 @@ export function HomePage() {
         const nextYearMonth = addMonths(currentYearMonth, 1)
         const { data: mustPublish } = await supabase
           .from('profiles')
-          .select('id, display_name')
+          .select('id, display_name, preferred_display_name')
           .eq('must_publish_schedule', true)
 
         if (mustPublish && mustPublish.length > 0) {
@@ -91,7 +92,7 @@ export function HomePage() {
           for (const m of missing) {
             items.push({
               id: `remind-${m.id}`,
-              text: `已進入[${currentMonthNum}月]月底區間，您尚未對[${m.display_name}]公告下個月班表，請留意盡早編輯公告！`,
+              text: `已進入[${currentMonthNum}月]月底區間，您尚未對[${effectiveDisplayName(m)}]公告下個月班表，請留意盡早編輯公告！`,
               colorClass: 'text-red-600 font-medium',
               sortKey: now,
             })
@@ -110,9 +111,9 @@ export function HomePage() {
           const memberIds = Array.from(new Set(pendingLeaves.map((r) => r.member_id)))
           const { data: profs } = await supabase
             .from('profiles')
-            .select('id, display_name')
+            .select('id, display_name, preferred_display_name')
             .in('id', memberIds)
-          const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+          const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
 
           const groups: Record<string, { memberId: string; month: string; count: number }> = {}
           for (const r of pendingLeaves) {
@@ -148,9 +149,9 @@ export function HomePage() {
           const memberIds = Array.from(new Set(pendingBackfills.map((r) => r.member_id)))
           const { data: profs } = await supabase
             .from('profiles')
-            .select('id, display_name')
+            .select('id, display_name, preferred_display_name')
             .in('id', memberIds)
-          const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+          const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
 
           const groups: Record<string, { memberId: string; month: string; count: number }> = {}
           for (const r of pendingBackfills) {
@@ -182,7 +183,7 @@ export function HomePage() {
         const targetYearMonth = addMonths(currentYearMonth, -1)
         const { data: mustCalculate } = await supabase
           .from('profiles')
-          .select('id, display_name')
+          .select('id, display_name, preferred_display_name')
           .eq('must_calculate_settlement', true)
 
         if (mustCalculate && mustCalculate.length > 0) {
@@ -199,7 +200,7 @@ export function HomePage() {
           for (const m of missing) {
             items.push({
               id: `settlement-${m.id}-${targetYearMonth}`,
-              text: `已進入[${currentMonthNum}月]月初區間，您尚未產出[${m.display_name}]的[${targetMonthNum}月]月結，請至[月結系統]產出月結！`,
+              text: `已進入[${currentMonthNum}月]月初區間，您尚未產出[${effectiveDisplayName(m)}]的[${targetMonthNum}月]月結，請至[月結系統]產出月結！`,
               colorClass: 'text-red-600 font-medium',
               sortKey: now,
             })
@@ -214,7 +215,7 @@ export function HomePage() {
         const januaryFirst = `${currentYear}-01-01`
         const { data: withHireDate } = await supabase
           .from('profiles')
-          .select('id, display_name')
+          .select('id, display_name, preferred_display_name')
           .not('hire_date', 'is', null)
           .lte('hire_date', januaryFirst)
 
@@ -230,7 +231,7 @@ export function HomePage() {
           for (const m of missing) {
             items.push({
               id: `wage-${m.id}-${currentYear}`,
-              text: `您尚未新增${m.display_name} - ${currentYear}年的<新時薪>，請至<成員管理>該成員的[$]裡新增`,
+              text: `您尚未新增${effectiveDisplayName(m)} - ${currentYear}年的<新時薪>，請至<成員管理>該成員的[$]裡新增`,
               colorClass: 'text-red-600 font-medium',
               sortKey: now,
             })
@@ -261,7 +262,7 @@ export function HomePage() {
     <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-start justify-between gap-3 mb-2">
         <h1 className="text-xl font-semibold">
-          歡迎回來，{profile.display_name}（{ROLE_LABELS[profile.role]}）
+          歡迎回來，{effectiveDisplayName(profile)}（{ROLE_LABELS[profile.role]}）
         </h1>
         <div className="flex items-center gap-3">
           <Link to="/usage-guide" className="text-xs text-blue-700 underline whitespace-nowrap">

@@ -6,6 +6,7 @@ import { daysInMonth, getMonthGrid, pad2, todayStr } from '@/shared/lib/date'
 import { LeaveDetailPanel } from './LeaveDetailPanel'
 import { MonthSelector } from '@/shared/components/MonthSelector'
 import { computeLeaveDisplay } from './leaveDisplay'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -113,9 +114,9 @@ export function LeaveCalendar() {
     if (reviewerIds.length > 0) {
       const { data: profs } = await supabase
         .from('profiles')
-        .select('id, display_name')
+        .select('id, display_name, preferred_display_name')
         .in('id', reviewerIds)
-      names = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+      names = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
     }
 
     const lMap: Record<string, LeaveRequestRow> = {}
@@ -156,7 +157,7 @@ export function LeaveCalendar() {
             >
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.display_name}
+                  {effectiveDisplayName(m)}
                   {m.id === profile?.id ? '（我）' : ''}
                 </option>
               ))}

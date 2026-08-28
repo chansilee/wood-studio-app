@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 import type { Enums, Tables } from '@/shared/types/database'
 
 export type PublicationSnapshotEntry = { work_date: string; status: Enums<'shift_status'> }
@@ -29,9 +30,9 @@ export function useSchedulePublications(memberId: string | undefined, yearMonth:
     if (publisherIds.length > 0) {
       const { data: profs } = await supabase
         .from('profiles')
-        .select('id, display_name')
+        .select('id, display_name, preferred_display_name')
         .in('id', publisherIds)
-      names = Object.fromEntries((profs ?? []).map((p) => [p.id, p.display_name]))
+      names = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
     }
     // a newer load may have started (and possibly already resolved) while this one
     // was in flight — discard this result so it can't clobber fresher state

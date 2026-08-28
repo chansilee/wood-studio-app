@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { supabase } from '@/shared/lib/supabase'
 import { ROLE_LABELS } from '@/shared/constants/roles'
+import { effectiveDisplayName } from '@/shared/lib/displayName'
 
 const navItemClass = ({ isActive }: { isActive: boolean }) =>
   `px-3 py-2 rounded text-sm ${isActive ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`
@@ -27,7 +28,7 @@ export function Layout() {
         <div className="flex items-center gap-3 text-sm">
           {profile && (
             <span>
-              {profile.display_name}（{ROLE_LABELS[profile.role]}）
+              {effectiveDisplayName(profile)}（{ROLE_LABELS[profile.role]}）
             </span>
           )}
           <button onClick={() => supabase.auth.signOut()} className="underline">
