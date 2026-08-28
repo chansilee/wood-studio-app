@@ -9,6 +9,7 @@ import { AttendanceSettings } from './AttendanceSettings'
 import { MonthSelector } from '@/shared/components/MonthSelector'
 import { todayStr } from '@/shared/lib/date'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
+import { isSelectableMember } from '@/shared/lib/members'
 import type { Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -32,8 +33,9 @@ export function AttendancePage() {
       .in('role', ['owner', 'staff'])
       .order('display_name')
       .then(({ data }) => {
-        setMembers(data ?? [])
-        setSelectedMemberId((prev) => prev || profile.id)
+        const selectable = (data ?? []).filter(isSelectableMember)
+        setMembers(selectable)
+        setSelectedMemberId((prev) => prev || (selectable.some((m) => m.id === profile.id) ? profile.id : selectable[0]?.id) || '')
       })
   }, [isOwner, profile])
 

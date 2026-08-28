@@ -457,6 +457,7 @@ export type Database = {
           must_calculate_settlement: boolean
           must_publish_schedule: boolean
           preferred_display_name: string | null
+          pure_management: boolean
           role: Database["public"]["Enums"]["member_role"]
           updated_at: string
           weekly_rest_check_enabled: boolean
@@ -471,6 +472,7 @@ export type Database = {
           must_calculate_settlement?: boolean
           must_publish_schedule?: boolean
           preferred_display_name?: string | null
+          pure_management?: boolean
           role?: Database["public"]["Enums"]["member_role"]
           updated_at?: string
           weekly_rest_check_enabled?: boolean
@@ -485,6 +487,7 @@ export type Database = {
           must_calculate_settlement?: boolean
           must_publish_schedule?: boolean
           preferred_display_name?: string | null
+          pure_management?: boolean
           role?: Database["public"]["Enums"]["member_role"]
           updated_at?: string
           weekly_rest_check_enabled?: boolean

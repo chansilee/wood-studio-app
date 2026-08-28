@@ -8,6 +8,7 @@ import { MonthSelector } from '@/shared/components/MonthSelector'
 import { SettlementArchive } from './SettlementArchive'
 import { SettlementSettings } from './SettlementSettings'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
+import { isSelectableMember } from '@/shared/lib/members'
 import {
   addMonths,
   daysInMonth,
@@ -65,8 +66,9 @@ export function MonthlySettlementPage() {
       .in('role', ['owner', 'staff', 'apprentice'])
       .order('display_name')
       .then(({ data }) => {
-        setMembers(data ?? [])
-        setSelectedMemberId((prev) => prev || profile.id)
+        const selectable = (data ?? []).filter(isSelectableMember)
+        setMembers(selectable)
+        setSelectedMemberId((prev) => prev || (selectable.some((m) => m.id === profile.id) ? profile.id : selectable[0]?.id) || '')
       })
   }, [isOwner, profile])
 

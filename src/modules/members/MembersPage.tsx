@@ -131,6 +131,20 @@ export function MembersPage() {
     setSavingId(null)
   }
 
+  const updatePureManagement = async (id: string, enabled: boolean) => {
+    setSavingId(id)
+    setError(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ pure_management: enabled })
+      .eq('id', id)
+    if (error) setError(error.message)
+    else setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, pure_management: enabled } : m)))
+    setSavingId(null)
+  }
+
+  const ownerCount = members.filter((m) => m.role === 'owner').length
+
   if (loading) return <div className="p-6">載入中…</div>
 
   return (
@@ -141,6 +155,9 @@ export function MembersPage() {
       </p>
       <p className="text-sm text-gray-600 mb-4">
         「顯示名稱」是帳號自己設定的名字；填寫「本名（管理用）」後，全站（含該成員自己看到的畫面）都會改顯示這個名字，留空則維持顯示帳號自己設定的名字。
+      </p>
+      <p className="text-sm text-gray-600 mb-4">
+        「純管理」僅負責人身分可勾選：勾選後，該負責人帳號會從排班/打卡/請假/月結的成員選單中隱藏（不會選到自己），但既有紀錄不受影響、不會被刪除，方便用來審核其他成員。
       </p>
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
       <div className="overflow-x-auto">
@@ -156,6 +173,7 @@ export function MembersPage() {
               <th className="py-2 pr-4">一例一休檢查</th>
               <th className="py-2 pr-4">必須公告班表</th>
               <th className="py-2 pr-4">必須計算月結</th>
+              <th className="py-2 pr-4">純管理</th>
               <th className="py-2 pr-4"></th>
             </tr>
           </thead>
@@ -178,9 +196,14 @@ export function MembersPage() {
                 <td className="py-2 pr-4">
                   <select
                     value={m.role}
-                    disabled={savingId === m.id}
+                    disabled={savingId === m.id || (m.role === 'owner' && ownerCount <= 1)}
+                    title={
+                      m.role === 'owner' && ownerCount <= 1
+                        ? '系統目前只有一位負責人，無法變更身分，以免失去管理權限'
+                        : undefined
+                    }
                     onChange={(e) => updateRole(m.id, e.target.value as MemberRole)}
-                    className="border rounded px-2 py-1"
+                    className="border rounded px-2 py-1 disabled:bg-gray-100 disabled:text-gray-400"
                   >
                     {ROLE_OPTIONS.map((r) => (
                       <option key={r} value={r}>
@@ -235,6 +258,16 @@ export function MembersPage() {
                   />
                 </td>
                 <td className="py-2 pr-4">
+                  {m.role === 'owner' && (
+                    <input
+                      type="checkbox"
+                      checked={m.pure_management}
+                      disabled={savingId === m.id}
+                      onChange={(e) => updatePureManagement(m.id, e.target.checked)}
+                    />
+                  )}
+                </td>
+                <td className="py-2 pr-4">
                   <button
                     onClick={() => setExpandedWageId((prev) => (prev === m.id ? null : m.id))}
                     className="border rounded w-7 h-7 text-sm text-gray-600 hover:bg-gray-50"
@@ -245,7 +278,7 @@ export function MembersPage() {
               </tr>
               {expandedWageId === m.id && (
                 <tr className="border-b bg-gray-50">
-                  <td colSpan={10} className="py-3 px-4">
+                  <td colSpan={11} className="py-3 px-4">
                     <p className="text-xs text-gray-500 mb-2">{effectiveDisplayName(m)} - 約定月薪表</p>
                     <MemberWageTable memberId={m.id} hireDate={m.hire_date} />
                   </td>

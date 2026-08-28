@@ -20,6 +20,7 @@ import {
 } from '@/shared/lib/date'
 import { CALENDAR_OVERRIDE_FULL_MASK, SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
+import { isSelectableMember } from '@/shared/lib/members'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
@@ -95,8 +96,9 @@ export function OwnerScheduleEditor() {
       .neq('role', 'guest')
       .order('display_name')
       .then(({ data }) => {
-        setMembers(data ?? [])
-        setSelectedMemberId((prev) => prev || profile?.id || data?.[0]?.id || '')
+        const selectable = (data ?? []).filter(isSelectableMember)
+        setMembers(selectable)
+        setSelectedMemberId((prev) => prev || (selectable.some((m) => m.id === profile?.id) ? profile!.id : selectable[0]?.id) || '')
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

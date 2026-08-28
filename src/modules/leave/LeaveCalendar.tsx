@@ -7,6 +7,7 @@ import { LeaveDetailPanel } from './LeaveDetailPanel'
 import { MonthSelector } from '@/shared/components/MonthSelector'
 import { computeLeaveDisplay } from './leaveDisplay'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
+import { isSelectableMember } from '@/shared/lib/members'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -47,8 +48,9 @@ export function LeaveCalendar() {
       .in('role', ['owner', 'staff', 'apprentice'])
       .order('display_name')
       .then(({ data }) => {
-        setMembers(data ?? [])
-        setSelectedMemberId((prev) => prev || profile.id)
+        const selectable = (data ?? []).filter(isSelectableMember)
+        setMembers(selectable)
+        setSelectedMemberId((prev) => prev || (selectable.some((m) => m.id === profile.id) ? profile.id : selectable[0]?.id) || '')
       })
   }, [isOwner, profile])
 
