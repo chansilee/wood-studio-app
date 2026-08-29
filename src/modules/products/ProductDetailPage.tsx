@@ -3,10 +3,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { ProcessFlowEditor } from './ProcessFlowEditor'
+import { formatDateTime } from '@/shared/lib/date'
 import type { Tables } from '@/shared/types/database'
 
 type Product = Tables<'products'>
 type ProcessTemplate = Tables<'process_templates'>
+type TemplateApplication = Tables<'product_template_applications'>
 type TagBalance = { tag_id: string; label: string; available_qty: number }
 
 function display(v: string | number | null | undefined, empty = '未設定'): string {
@@ -26,10 +28,13 @@ export function ProductDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [nodeCount, setNodeCount] = useState<number | null>(null)
+  const [logCount, setLogCount] = useState<number | null>(null)
+  const [adjustmentCount, setAdjustmentCount] = useState<number | null>(null)
   const [templates, setTemplates] = useState<ProcessTemplate[]>([])
   const [pickedTemplateId, setPickedTemplateId] = useState('')
   const [applying, setApplying] = useState(false)
-  const [sourceTemplate, setSourceTemplate] = useState<ProcessTemplate | null>(null)
+  const [appliedTemplates, setAppliedTemplates] = useState<TemplateApplication[]>([])
+  const [currentTemplateNames, setCurrentTemplateNames] = useState<Record<string, string>>({})
 
   const load = async () => {
     if (!id) return
@@ -43,6 +48,18 @@ export function ProductDetailPage() {
     if (!id) return
     const { count } = await supabase.from('process_nodes').select('id', { count: 'exact', head: true }).eq('product_id', id)
     setNodeCount(count ?? 0)
+  }
+
+  const loadLogCount = async () => {
+    if (!id) return
+    const { count } = await supabase.from('production_logs').select('id', { count: 'exact', head: true }).eq('product_id', id)
+    setLogCount(count ?? 0)
+  }
+
+  const loadAdjustmentCount = async () => {
+    if (!id) return
+    const { count } = await supabase.from('stock_adjustments').select('id', { count: 'exact', head: true }).eq('product_id', id)
+    setAdjustmentCount(count ?? 0)
   }
 
   const loadBalances = async () => {
@@ -59,36 +76,78 @@ export function ProductDetailPage() {
     load()
     loadBalances()
     loadNodeCount()
+    loadLogCount()
+    loadAdjustmentCount()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, refreshKey])
 
   useEffect(() => {
-    if (nodeCount === 0 && canEdit) {
+    if (logCount === 0 && adjustmentCount === 0 && canEdit) {
       supabase
         .from('process_templates')
         .select('*')
         .order('name')
         .then(({ data }) => setTemplates(data ?? []))
     }
-  }, [nodeCount, canEdit])
+  }, [logCount, adjustmentCount, canEdit])
+
+  const loadAppliedTemplates = async () => {
+    if (!id) return
+    const { data } = await supabase
+      .from('product_template_applications')
+      .select('*')
+      .eq('product_id', id)
+      .order('applied_at')
+    const rows = data ?? []
+    setAppliedTemplates(rows)
+    // template_name is a snapshot of what the template was called at apply
+    // time (so renaming/deleting it later never rewrites history) — but also
+    // fetch the CURRENT name (when the template still exists) so the display
+    // can note a rename instead of silently going stale
+    const templateIds = Array.from(new Set(rows.map((r) => r.template_id).filter((x): x is string => !!x)))
+    if (templateIds.length > 0) {
+      const { data: liveTemplates } = await supabase.from('process_templates').select('id, name').in('id', templateIds)
+      setCurrentTemplateNames(Object.fromEntries((liveTemplates ?? []).map((t) => [t.id, t.name])))
+    } else {
+      setCurrentTemplateNames({})
+    }
+  }
 
   useEffect(() => {
-    if (product?.process_template_id) {
-      supabase
-        .from('process_templates')
-        .select('*')
-        .eq('id', product.process_template_id)
-        .maybeSingle()
-        .then(({ data }) => setSourceTemplate(data ?? null))
-    } else {
-      setSourceTemplate(null)
-    }
-  }, [product?.process_template_id])
+    loadAppliedTemplates()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, refreshKey])
 
   const applyTemplate = async () => {
     if (!id || !pickedTemplateId) return
+    if (
+      (nodeCount ?? 0) > 0 &&
+      !window.confirm('這個產品目前已經有流程圖了。套用範本會清空現有的流程，改用範本的內容，確定要繼續嗎？')
+    ) {
+      return
+    }
     setError(null)
     setApplying(true)
+    // safe: the picker only shows once logCount === 0 and adjustmentCount ===
+    // 0, so no production_logs or stock_adjustments reference these nodes —
+    // deleting them cascades their edges too
+    if ((nodeCount ?? 0) > 0) {
+      const { error: wipeErr } = await supabase.from('process_nodes').delete().eq('product_id', id)
+      if (wipeErr) {
+        setApplying(false)
+        setError(
+          wipeErr.message.includes('foreign key') ||
+            wipeErr.message.includes('violates') ||
+            wipeErr.message.includes('production log history')
+            ? '這個產品有節點已經有生產紀錄，無法套用範本'
+            : wipeErr.message
+        )
+        return
+      }
+    }
+    // the old graph (and whatever it was built from) is gone — any prior
+    // application history no longer describes what's actually here now
+    await supabase.from('product_template_applications').delete().eq('product_id', id)
     const [{ data: srcNodes }, { data: srcEdges }] = await Promise.all([
       supabase.from('process_nodes').select('*').eq('template_id', pickedTemplateId),
       supabase.from('process_edges').select('*').eq('template_id', pickedTemplateId),
@@ -113,6 +172,7 @@ export function ProductDetailPage() {
       from_node_id: idMap.get(e.from_node_id)!,
       to_node_id: idMap.get(e.to_node_id)!,
       product_id: id,
+      sort_order: e.sort_order,
     }))
     const { error: nodeErr } = await supabase.from('process_nodes').insert(newNodes)
     if (nodeErr) {
@@ -128,7 +188,14 @@ export function ProductDetailPage() {
         return
       }
     }
-    await supabase.from('products').update({ process_template_id: pickedTemplateId }).eq('id', id)
+    const pickedTemplate = templates.find((t) => t.id === pickedTemplateId)
+    await supabase.from('product_template_applications').insert({
+      product_id: id,
+      template_id: pickedTemplateId,
+      template_name: pickedTemplate?.name ?? '未知範本',
+      mode: 'replace',
+      applied_by: profile?.id,
+    })
     setApplying(false)
     setPickedTemplateId('')
     setRefreshKey((k) => k + 1)
@@ -301,7 +368,7 @@ export function ProductDetailPage() {
       </div>
 
       <h2 className="font-medium mb-2">生產流程</h2>
-      {canEdit && nodeCount === 0 && templates.length > 0 && (
+      {canEdit && logCount === 0 && adjustmentCount === 0 && templates.length > 0 && (
         <div className="border rounded-lg p-3 mb-3 bg-gray-50 flex flex-wrap items-center gap-2">
           <span className="text-sm text-gray-600">從範本套用：</span>
           <select
@@ -324,15 +391,48 @@ export function ProductDetailPage() {
             {applying ? '套用中…' : '套用'}
           </button>
           <span className="text-xs text-gray-400 w-full">
-            套用後會複製一份獨立的流程給這個產品，之後編輯範本或這個產品的流程互不影響。也可以不套用，直接在下方從空白開始建立。
+            套用後會複製一份獨立的流程給這個產品，之後編輯範本或這個產品的流程互不影響。
+            {(nodeCount ?? 0) > 0
+              ? '目前已經有流程圖，套用會清空並改用範本的內容——因為還沒有任何生產紀錄或校正紀錄，這樣做是安全的。'
+              : '也可以不套用，直接在下方從空白開始建立。'}
           </span>
         </div>
       )}
-      {sourceTemplate && (
-        <p className="text-xs text-gray-400 mb-2">此流程從範本「{sourceTemplate.name}」初始化，後續編輯與範本互不影響</p>
+      {appliedTemplates.length > 0 && (
+        <div className="text-xs text-gray-400 mb-2">
+          <span>套用過的範本：</span>
+          {appliedTemplates.map((a, i) => {
+            var currentName = a.template_id ? currentTemplateNames[a.template_id] : undefined
+            var renamed = currentName && currentName !== a.template_name
+            var label = (
+              <>
+                「{a.template_name}」（{a.mode === 'replace' ? '完整套用' : '差異套用'} · {formatDateTime(a.applied_at).slice(0, 10)}）
+                {renamed && <span>（現已改名為「{currentName}」）</span>}
+              </>
+            )
+            return (
+              <span key={a.id}>
+                {i > 0 && '、'}
+                {a.template_id && currentName ? (
+                  <Link to={`/process-templates/${a.template_id}`} className="text-blue-700 hover:underline">
+                    {label}
+                  </Link>
+                ) : (
+                  label
+                )}
+              </span>
+            )
+          })}
+          <span>，後續編輯與範本互不影響</span>
+        </div>
       )}
       <div className="mb-6">
-        <ProcessFlowEditor key={refreshKey} scope={{ type: 'product', id: product.id }} editable={canEdit} />
+        <ProcessFlowEditor
+          key={refreshKey}
+          scope={{ type: 'product', id: product.id }}
+          editable={canEdit}
+          onChanged={() => setRefreshKey((k) => k + 1)}
+        />
       </div>
 
       <h2 className="font-medium mb-2">目前庫存</h2>

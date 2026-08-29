@@ -36,7 +36,11 @@ export function ProcessTemplatesPage() {
       .from('process_templates')
       .insert({ name: newName.trim(), created_by: profile?.id })
     if (error) {
-      setError(error.message)
+      setError(
+        error.message.includes('duplicate key') || error.message.includes('unique')
+          ? '已經有同名的流程範本了，請換一個名稱'
+          : error.message
+      )
       return
     }
     setNewName('')

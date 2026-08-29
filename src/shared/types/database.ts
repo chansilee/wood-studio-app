@@ -179,6 +179,38 @@ export type Database = {
           },
         ]
       }
+      journal_preferences: {
+        Row: {
+          action_first: boolean
+          auto_fill_first_output: boolean
+          hide_unavailable_inputs: boolean
+          member_id: string
+          updated_at: string
+        }
+        Insert: {
+          action_first?: boolean
+          auto_fill_first_output?: boolean
+          hide_unavailable_inputs?: boolean
+          member_id: string
+          updated_at?: string
+        }
+        Update: {
+          action_first?: boolean
+          auto_fill_first_output?: boolean
+          hide_unavailable_inputs?: boolean
+          member_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_preferences_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leave_types: {
         Row: {
           created_at: string
@@ -373,6 +405,7 @@ export type Database = {
           from_node_id: string
           id: string
           product_id: string | null
+          sort_order: number
           template_id: string | null
           to_node_id: string
         }
@@ -381,6 +414,7 @@ export type Database = {
           from_node_id: string
           id?: string
           product_id?: string | null
+          sort_order?: number
           template_id?: string | null
           to_node_id: string
         }
@@ -389,6 +423,7 @@ export type Database = {
           from_node_id?: string
           id?: string
           product_id?: string | null
+          sort_order?: number
           template_id?: string | null
           to_node_id?: string
         }
@@ -549,6 +584,58 @@ export type Database = {
           },
         ]
       }
+      product_template_applications: {
+        Row: {
+          applied_at: string
+          applied_by: string | null
+          id: string
+          mode: string
+          product_id: string
+          template_id: string | null
+          template_name: string
+        }
+        Insert: {
+          applied_at?: string
+          applied_by?: string | null
+          id?: string
+          mode: string
+          product_id: string
+          template_id?: string | null
+          template_name: string
+        }
+        Update: {
+          applied_at?: string
+          applied_by?: string | null
+          id?: string
+          mode?: string
+          product_id?: string
+          template_id?: string | null
+          template_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_template_applications_applied_by_fkey"
+            columns: ["applied_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_template_applications_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_template_applications_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "process_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       production_log_outputs: {
         Row: {
           id: string
@@ -596,6 +683,8 @@ export type Database = {
         Row: {
           action_node_id: string
           created_at: string
+          edited_at: string | null
+          edited_by: string | null
           id: string
           input_tag_id: string
           log_date: string
@@ -606,6 +695,8 @@ export type Database = {
         Insert: {
           action_node_id: string
           created_at?: string
+          edited_at?: string | null
+          edited_by?: string | null
           id?: string
           input_tag_id: string
           log_date: string
@@ -616,6 +707,8 @@ export type Database = {
         Update: {
           action_node_id?: string
           created_at?: string
+          edited_at?: string | null
+          edited_by?: string | null
           id?: string
           input_tag_id?: string
           log_date?: string
@@ -637,6 +730,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tag_balances"
             referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "production_logs_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "production_logs_input_tag_id_fkey"
@@ -678,7 +778,6 @@ export type Database = {
           material: string | null
           material_thickness_mm: number | null
           name: string
-          process_template_id: string | null
           size_note: string | null
           tags: string[]
           updated_at: string
@@ -692,7 +791,6 @@ export type Database = {
           material?: string | null
           material_thickness_mm?: number | null
           name: string
-          process_template_id?: string | null
           size_note?: string | null
           tags?: string[]
           updated_at?: string
@@ -706,7 +804,6 @@ export type Database = {
           material?: string | null
           material_thickness_mm?: number | null
           name?: string
-          process_template_id?: string | null
           size_note?: string | null
           tags?: string[]
           updated_at?: string
@@ -717,13 +814,6 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "products_process_template_id_fkey"
-            columns: ["process_template_id"]
-            isOneToOne: false
-            referencedRelation: "process_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -986,6 +1076,65 @@ export type Database = {
           },
         ]
       }
+      stock_adjustments: {
+        Row: {
+          adjusted_at: string
+          adjusted_by: string | null
+          id: string
+          product_id: string
+          qty_delta: number
+          reason: string | null
+          tag_id: string
+        }
+        Insert: {
+          adjusted_at?: string
+          adjusted_by?: string | null
+          id?: string
+          product_id: string
+          qty_delta: number
+          reason?: string | null
+          tag_id: string
+        }
+        Update: {
+          adjusted_at?: string
+          adjusted_by?: string | null
+          id?: string
+          product_id?: string
+          qty_delta?: number
+          reason?: string | null
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_adjustments_adjusted_by_fkey"
+            columns: ["adjusted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "process_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tag_balances"
+            referencedColumns: ["tag_id"]
+          },
+        ]
+      }
       work_logs: {
         Row: {
           content: string
@@ -1081,6 +1230,17 @@ export type Database = {
       current_role_name: {
         Args: never
         Returns: Database["public"]["Enums"]["member_role"]
+      }
+      edit_latest_production_log: {
+        Args: {
+          p_action_node_id: string
+          p_input_tag_id: string
+          p_log_date: string
+          p_log_id: string
+          p_outputs: Json
+          p_qty_consumed: number
+        }
+        Returns: string
       }
       has_any_owner: { Args: never; Returns: boolean }
       is_owner: { Args: never; Returns: boolean }

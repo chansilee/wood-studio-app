@@ -14,7 +14,15 @@ function newId(): string {
 
 export type ProcessFlowScope = { type: 'product'; id: string } | { type: 'template'; id: string }
 
-export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope; editable: boolean }) {
+export function ProcessFlowEditor({
+  scope,
+  editable,
+  onChanged,
+}: {
+  scope: ProcessFlowScope
+  editable: boolean
+  onChanged?: () => void
+}) {
   const [nodes, setNodes] = useState<NodeRow[]>([])
   const [edges, setEdges] = useState<EdgeRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,7 +65,7 @@ export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope
     setLoading(true)
     const [{ data: nodeRows }, { data: edgeRows }] = await Promise.all([
       supabase.from('process_nodes').select('*').eq(scopeCol, scope.id),
-      supabase.from('process_edges').select('*').eq(scopeCol, scope.id),
+      supabase.from('process_edges').select('*').eq(scopeCol, scope.id).order('sort_order'),
     ])
     let finalNodes = nodeRows ?? []
     // "開始" is a magic label the production-log validation trigger treats as
@@ -80,7 +88,9 @@ export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope
 
   const findNode = (id: string) => nodes.find((n) => n.id === id)
   const isAction = (id: string) => findNode(id)?.kind === 'action'
-  const outEdgesOfAction = (id: string) => edges.filter((e) => e.from_node_id === id)
+  // sort locally (not just filter) so a reorder swap re-renders in its new
+  // position immediately, instead of only after a reload re-fetches sorted
+  const outEdgesOfAction = (id: string) => edges.filter((e) => e.from_node_id === id).sort((a, b) => a.sort_order - b.sort_order)
   const tagHasOutgoing = (id: string) => edges.some((e) => e.from_node_id === id)
 
   const actionHeight = (n: NodeRow) => {
@@ -234,8 +244,32 @@ export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope
 
   const addEdge = async (fromNodeId: string, toNodeId: string) => {
     const id = newId()
-    setEdges((prev) => [...prev, { id, ...scopeFields, from_node_id: fromNodeId, to_node_id: toNodeId, created_at: new Date().toISOString() }])
-    await supabase.from('process_edges').insert({ id, ...scopeFields, from_node_id: fromNodeId, to_node_id: toNodeId })
+    const siblingOrders = edges.filter((e) => e.from_node_id === fromNodeId).map((e) => e.sort_order)
+    const sortOrder = siblingOrders.length > 0 ? Math.max(...siblingOrders) + 1 : 0
+    setEdges((prev) => [
+      ...prev,
+      { id, ...scopeFields, from_node_id: fromNodeId, to_node_id: toNodeId, sort_order: sortOrder, created_at: new Date().toISOString() },
+    ])
+    await supabase.from('process_edges').insert({ id, ...scopeFields, from_node_id: fromNodeId, to_node_id: toNodeId, sort_order: sortOrder })
+  }
+
+  // swap this output edge with its neighbor above/below in the action's
+  // output list — the only ordering signal is sort_order, so reordering is
+  // just swapping two values, no need to touch anything else
+  const moveOutput = async (actionId: string, edgeId: string, direction: -1 | 1) => {
+    const outs = outEdgesOfAction(actionId)
+    const idx = outs.findIndex((e) => e.id === edgeId)
+    const swapIdx = idx + direction
+    if (idx === -1 || swapIdx < 0 || swapIdx >= outs.length) return
+    const a = outs[idx]
+    const b = outs[swapIdx]
+    setEdges((prev) =>
+      prev.map((e) => (e.id === a.id ? { ...e, sort_order: b.sort_order } : e.id === b.id ? { ...e, sort_order: a.sort_order } : e))
+    )
+    await Promise.all([
+      supabase.from('process_edges').update({ sort_order: b.sort_order }).eq('id', a.id),
+      supabase.from('process_edges').update({ sort_order: a.sort_order }).eq('id', b.id),
+    ])
   }
 
   const removeNode = async (id: string) => {
@@ -245,7 +279,9 @@ export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope
     const { error } = await supabase.from('process_nodes').delete().eq('id', id)
     if (error) {
       setError(
-        error.message.includes('foreign key') || error.message.includes('violates')
+        error.message.includes('foreign key') ||
+          error.message.includes('violates') ||
+          error.message.includes('production log history')
           ? '這個節點已經有生產紀錄，無法刪除'
           : error.message
       )
@@ -259,7 +295,9 @@ export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope
     setError(null)
     const { error } = await supabase.from('process_edges').delete().eq('id', id)
     if (error) {
-      setError(error.message)
+      setError(
+        error.message.includes('production log history') ? '這條連線已經有生產紀錄，無法刪除' : error.message
+      )
       return
     }
     setEdges((prev) => prev.filter((e) => e.id !== id))
@@ -278,6 +316,48 @@ export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope
     addNode({ id: newId(), kind: 'tag', label: '新狀態', pos_x: 40, pos_y: 400 })
   }
 
+  const clearCanvas = async () => {
+    setError(null)
+    if (scope.type === 'product') {
+      const [{ count: logCount }, { count: adjustmentCount }] = await Promise.all([
+        supabase.from('production_logs').select('id', { count: 'exact', head: true }).eq('product_id', scope.id),
+        supabase.from('stock_adjustments').select('id', { count: 'exact', head: true }).eq('product_id', scope.id),
+      ])
+      if ((logCount ?? 0) > 0) {
+        window.alert('這個產品已經有生產紀錄，無法清空流程。')
+        return
+      }
+      if ((adjustmentCount ?? 0) > 0) {
+        window.alert('這個產品還有校正紀錄，無法清空流程。')
+        return
+      }
+    }
+    if (!window.confirm('確定要清空畫布嗎？除了「開始」以外的節點都會被刪除，此動作無法復原。')) return
+    const startNode = nodes.find((n) => n.kind === 'tag' && n.label === '開始')
+    const idsToDelete = nodes.filter((n) => n.id !== startNode?.id).map((n) => n.id)
+    if (idsToDelete.length > 0) {
+      const { error } = await supabase.from('process_nodes').delete().in('id', idsToDelete)
+      if (error) {
+        setError(
+          error.message.includes('foreign key') ||
+            error.message.includes('violates') ||
+            error.message.includes('production log history')
+            ? '清空失敗：這個流程裡有節點已經有生產紀錄，無法清空'
+            : '清空失敗：' + error.message
+        )
+        return
+      }
+    }
+    if (scope.type === 'product') {
+      // the graph no longer matches whatever templates were applied before —
+      // clear that history so it doesn't claim a stale provenance
+      await supabase.from('product_template_applications').delete().eq('product_id', scope.id)
+    }
+    setNodes((prev) => prev.filter((n) => n.id === startNode?.id))
+    setEdges([])
+    onChanged?.()
+  }
+
   if (loading) return <div className="text-sm text-gray-500">載入中…</div>
 
   const actionNodes = nodes.filter((n) => n.kind === 'action')
@@ -293,12 +373,10 @@ export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope
           <button onClick={addTag} className="border rounded px-3 py-1.5 text-sm hover:bg-gray-50">
             ＋ 新增標籤
           </button>
+          <button onClick={clearCanvas} className="border rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+            清空畫布
+          </button>
         </div>
-      )}
-      {editable && (
-        <p className="text-xs text-gray-500 mb-2">
-          拖曳方塊搬移　·　拖曳方塊琥珀圓點到空白處新增標籤、拖到既有標籤上重複使用　·　拖曳標籤綠色圓點到動作站上連接（或拖到空白處新增動作站）　·　點連線刪除　·　「開始」標籤為系統固定的起點，無法刪除或改名
-        </p>
       )}
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
 
@@ -385,13 +463,35 @@ export function ProcessFlowEditor({ scope, editable }: { scope: ProcessFlowScope
                   )}
                 </div>
                 <div className="flex flex-col gap-1 mt-1.5">
-                  {outs.map((e) => {
+                  {outs.map((e, idx) => {
                     const t = findNode(e.to_node_id)
                     return (
                       <div key={e.id} className="flex items-center gap-1.5 bg-amber-50 text-amber-800 rounded px-1.5 py-0.5 text-[11px]">
                         <span className="flex-1 truncate" style={{ fontFamily: 'ui-monospace, monospace' }}>
                           {t?.label ?? '?'}
                         </span>
+                        {editable && outs.length > 1 && (
+                          <span className="flex flex-col leading-none flex-shrink-0">
+                            <button
+                              onClick={() => moveOutput(n.id, e.id, -1)}
+                              disabled={idx === 0}
+                              className="text-amber-700 disabled:opacity-20 hover:opacity-100 leading-none"
+                              style={{ fontSize: 9 }}
+                              title="往上移"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              onClick={() => moveOutput(n.id, e.id, 1)}
+                              disabled={idx === outs.length - 1}
+                              className="text-amber-700 disabled:opacity-20 hover:opacity-100 leading-none"
+                              style={{ fontSize: 9 }}
+                              title="往下移"
+                            >
+                              ▼
+                            </button>
+                          </span>
+                        )}
                         {editable && (
                           <button onClick={() => removeEdge(e.id)} className="text-amber-700 opacity-60 hover:opacity-100">
                             ✕

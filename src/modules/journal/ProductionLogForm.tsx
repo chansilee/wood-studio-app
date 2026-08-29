@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { todayStr } from '@/shared/lib/date'
+import { Combobox } from '@/shared/components/Combobox'
+import type { JournalPrefs } from './JournalPreferencesPanel'
 import type { Tables } from '@/shared/types/database'
 
 type Product = Tables<'products'>
@@ -19,9 +21,7 @@ interface StepState {
   outputs: OutputRow[]
 }
 
-function newStep(inputTagId = '', actionId = ''): StepState {
-  return { inputTagId, actionId, qty: '', outputs: [] }
-}
+const DEFAULT_PREFS: JournalPrefs = { hideUnavailableInputs: false, actionFirst: false, autoFillFirstOutput: false }
 
 export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
   const { profile } = useAuth()
@@ -30,11 +30,11 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
   const [nodes, setNodes] = useState<NodeRow[]>([])
   const [edges, setEdges] = useState<EdgeRow[]>([])
   const [balances, setBalances] = useState<Record<string, number>>({})
-  const [logDate, setLogDate] = useState(todayStr())
   const [steps, setSteps] = useState<StepState[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [prefs, setPrefs] = useState<JournalPrefs>(DEFAULT_PREFS)
 
   useEffect(() => {
     supabase
@@ -43,6 +43,24 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
       .order('name')
       .then(({ data }) => setProducts(data ?? []))
   }, [])
+
+  useEffect(() => {
+    if (!profile) return
+    supabase
+      .from('journal_preferences')
+      .select('*')
+      .eq('member_id', profile.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setPrefs({
+            hideUnavailableInputs: data.hide_unavailable_inputs,
+            actionFirst: data.action_first,
+            autoFillFirstOutput: data.auto_fill_first_output,
+          })
+        }
+      })
+  }, [profile])
 
   useEffect(() => {
     if (!productId) {
@@ -55,16 +73,41 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
     setError(null)
     Promise.all([
       supabase.from('process_nodes').select('*').eq('product_id', productId),
-      supabase.from('process_edges').select('*').eq('product_id', productId),
+      supabase.from('process_edges').select('*').eq('product_id', productId).order('sort_order'),
       supabase.from('tag_balances').select('tag_id, available_qty').eq('product_id', productId),
     ]).then(([n, e, b]) => {
-      setNodes(n.data ?? [])
-      setEdges(e.data ?? [])
+      var freshNodes = n.data ?? []
+      var freshEdges = e.data ?? []
+      setNodes(freshNodes)
+      setEdges(freshEdges)
       setBalances(Object.fromEntries((b.data ?? []).map((r) => [r.tag_id, r.available_qty ?? 0])))
-      var startTag = (n.data ?? []).find((x) => x.label === '開始')
-      setSteps(startTag ? [newStep(startTag.id)] : [])
+      var findFresh = (id: string) => freshNodes.find((x) => x.id === id)
+      var freshActionsFrom = (tagId: string) =>
+        freshEdges.filter((ed) => ed.from_node_id === tagId).map((ed) => findFresh(ed.to_node_id)).filter(Boolean) as NodeRow[]
+      var startTag = freshNodes.find((x) => x.label === '開始')
+      if (!startTag) {
+        setSteps([])
+        return
+      }
+      // cascade the same "second layer defaults from the first" as addStep,
+      // using the just-fetched data directly since component state hasn't
+      // committed yet on this tick
+      var actionOpts = freshActionsFrom(startTag.id)
+      var actionId = actionOpts[0]?.id ?? ''
+      var outs = actionId
+        ? (freshEdges.filter((ed) => ed.from_node_id === actionId).map((ed) => findFresh(ed.to_node_id)).filter(Boolean) as NodeRow[]).map(
+            (t) => ({ tagId: t.id, qty: '' })
+          )
+        : []
+      setSteps([{ inputTagId: startTag.id, actionId, qty: '', outputs: outs }])
     })
   }, [productId])
+
+  const refreshBalances = async () => {
+    if (!productId) return
+    const { data: b } = await supabase.from('tag_balances').select('tag_id, available_qty').eq('product_id', productId)
+    setBalances(Object.fromEntries((b ?? []).map((r) => [r.tag_id, r.available_qty ?? 0])))
+  }
 
   const findNode = (id: string) => nodes.find((n) => n.id === id)
   const actionsFrom = (tagId: string) =>
@@ -84,13 +127,69 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
     return row ? Number(row.qty) || 0 : 0
   }
 
+  const rawInputOptionsFor = (idx: number): NodeRow[] =>
+    idx === 0
+      ? nodes.filter((n) => n.kind === 'tag')
+      : (steps[idx - 1]?.outputs.filter((o) => isContinuing(o.tagId)).map((o) => findNode(o.tagId)).filter(Boolean) as NodeRow[])
+
+  const inputOptionsFor = (idx: number): NodeRow[] => {
+    var raw = rawInputOptionsFor(idx)
+    return prefs.hideUnavailableInputs
+      ? raw.filter((n) => n.label === '開始' || (availableFor(idx, n.id) ?? 0) > 0)
+      : raw
+  }
+
+  const actionOptionsFor = (idx: number, inputTagId: string): NodeRow[] => {
+    if (!prefs.actionFirst) {
+      return inputTagId ? actionsFrom(inputTagId) : []
+    }
+    var seen = new Map<string, NodeRow>()
+    inputOptionsFor(idx).forEach((tag) => actionsFrom(tag.id).forEach((a) => seen.set(a.id, a)))
+    return Array.from(seen.values())
+  }
+
   const updateStep = (idx: number, patch: Partial<StepState>) => {
     setSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)))
   }
 
-  const setStepAction = (idx: number, actionId: string) => {
-    var outs = outputsOf(actionId).map((t) => ({ tagId: t.id, qty: '' }))
-    updateStep(idx, { actionId, outputs: outs })
+  const setStepAction = (idx: number, actionId: string, forcedInputTagId?: string) => {
+    var baseOuts = outputsOf(actionId).map((t) => ({ tagId: t.id, qty: '' }))
+    var currentQty = steps[idx]?.qty ?? ''
+    var outs =
+      prefs.autoFillFirstOutput && baseOuts.length > 0
+        ? baseOuts.map((o, i) => ({ ...o, qty: i === 0 ? currentQty : '0' }))
+        : baseOuts
+    var patch: Partial<StepState> = { actionId, outputs: outs }
+    if (forcedInputTagId !== undefined) patch.inputTagId = forcedInputTagId
+    updateStep(idx, patch)
+  }
+
+  // picking the first layer (whichever field that is) always cascades a
+  // default into the second layer — defaulting to the first candidate when
+  // there's more than one, or the only candidate when there's exactly one
+  // (in which case the field renders locked, since there's nothing to pick)
+  const handleSelectAction = (idx: number, actionId: string) => {
+    if (prefs.actionFirst) {
+      var matchingTags = inputOptionsFor(idx).filter((tag) => actionsFrom(tag.id).some((a) => a.id === actionId))
+      setStepAction(idx, actionId, matchingTags[0]?.id ?? '')
+    } else {
+      setStepAction(idx, actionId)
+    }
+  }
+
+  const setStepInput = (idx: number, inputTagId: string) => {
+    var actionOpts = inputTagId ? actionsFrom(inputTagId) : []
+    setStepAction(idx, actionOpts[0]?.id ?? '', inputTagId)
+  }
+
+  const handleQtyChange = (idx: number, qty: string) => {
+    var s = steps[idx]
+    if (prefs.autoFillFirstOutput && s && s.outputs.length > 0) {
+      var newOutputs = s.outputs.map((o, i) => ({ ...o, qty: i === 0 ? qty : '0' }))
+      updateStep(idx, { qty, outputs: newOutputs })
+    } else {
+      updateStep(idx, { qty })
+    }
   }
 
   const addStep = () => {
@@ -101,8 +200,13 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
     var withQty = prev.outputs.filter((o) => Number(o.qty) > 0 && isContinuing(o.tagId))
     var anyContinuing = prev.outputs.filter((o) => isContinuing(o.tagId))
     var candidates = withQty.length > 0 ? withQty : anyContinuing
-    var s = newStep(candidates.length === 1 ? candidates[0].tagId : '')
-    setSteps((cur) => [...cur, s])
+    var tagId = candidates.length === 1 ? candidates[0].tagId : ''
+    // mirror setStepInput's cascade so a pre-filled tag also gets its default
+    // action, keeping the (possibly locked) action select's value in sync
+    var actionOpts = tagId ? actionsFrom(tagId) : []
+    var actionId = actionOpts[0]?.id ?? ''
+    var outs = actionId ? outputsOf(actionId).map((t) => ({ tagId: t.id, qty: '' })) : []
+    setSteps((cur) => [...cur, { inputTagId: tagId, actionId, qty: '', outputs: outs }])
   }
 
   const removeStep = (idx: number) => {
@@ -156,7 +260,7 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
         .insert({
           product_id: productId,
           member_id: profile.id,
-          log_date: logDate,
+          log_date: todayStr(),
           action_node_id: step.actionId,
           input_tag_id: step.inputTagId,
           qty_consumed: Number(step.qty),
@@ -184,7 +288,15 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
     setSubmitting(false)
     setMessage('已登記，系統已自動加總')
     var startTag = nodes.find((x) => x.label === '開始')
-    setSteps(startTag ? [newStep(startTag.id)] : [])
+    if (startTag) {
+      var actionOpts = actionsFrom(startTag.id)
+      var actionId = actionOpts[0]?.id ?? ''
+      var outs = actionId ? outputsOf(actionId).map((t) => ({ tagId: t.id, qty: '' })) : []
+      setSteps([{ inputTagId: startTag.id, actionId, qty: '', outputs: outs }])
+    } else {
+      setSteps([])
+    }
+    await refreshBalances()
     onLogged?.()
   }
 
@@ -193,30 +305,67 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
       <div className="flex flex-wrap gap-3 mb-3">
         <div>
           <label className="block text-xs text-gray-600 mb-1">產品</label>
-          <select value={productId} onChange={(e) => setProductId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
-            <option value="">請選擇</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">日期</label>
-          <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+          <Combobox
+            options={products.map((p) => ({ value: p.id, label: p.name }))}
+            value={productId}
+            onChange={setProductId}
+            placeholder="輸入或選擇產品"
+            className="w-48"
+          />
         </div>
       </div>
 
       {productId && nodes.length === 0 && <p className="text-sm text-gray-400">這個產品還沒有建立生產流程</p>}
 
       {steps.map((s, idx) => {
-        var inputOptions =
-          idx === 0
-            ? nodes.filter((n) => n.kind === 'tag')
-            : (steps[idx - 1]?.outputs.filter((o) => isContinuing(o.tagId)).map((o) => findNode(o.tagId)).filter(Boolean) as NodeRow[])
-        var actionOptions = s.inputTagId ? actionsFrom(s.inputTagId) : []
+        var inputOptions = inputOptionsFor(idx)
+        var actionOptions = actionOptionsFor(idx, s.inputTagId)
+        var inputOptionsForAction = prefs.actionFirst
+          ? inputOptions.filter((tag) => actionsFrom(tag.id).some((a) => a.id === s.actionId))
+          : inputOptions
         var avail = s.inputTagId ? availableFor(idx, s.inputTagId) : null
+        // the field that comes second is always cascaded from the first, so
+        // it's locked once there's only one possible value (nothing to pick)
+        var actionDisabled = !prefs.actionFirst && (!s.inputTagId || actionOptions.length <= 1)
+        var inputDisabled = prefs.actionFirst && (!s.actionId || inputOptionsForAction.length <= 1)
+
+        var inputField = (
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">輸入狀態</label>
+            <select
+              value={s.inputTagId}
+              onChange={(e) => setStepInput(idx, e.target.value)}
+              className="border rounded px-2 py-1.5 text-sm"
+              disabled={inputDisabled}
+            >
+              {(!prefs.actionFirst || inputOptionsForAction.length === 0) && <option value="">請選擇</option>}
+              {(prefs.actionFirst ? inputOptionsForAction : inputOptions).map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.label}
+                </option>
+              ))}
+            </select>
+            {avail !== null && <p className="text-[11px] text-gray-400 mt-0.5">目前可用：{avail}</p>}
+          </div>
+        )
+        var actionField = (
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">動作站</label>
+            <select
+              value={s.actionId}
+              onChange={(e) => handleSelectAction(idx, e.target.value)}
+              className="border rounded px-2 py-1.5 text-sm"
+              disabled={actionDisabled}
+            >
+              {(prefs.actionFirst || actionOptions.length === 0) && <option value="">請選擇</option>}
+              {actionOptions.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )
 
         return (
           <div key={idx} className="border rounded p-3 mb-2 bg-gray-50">
@@ -229,45 +378,24 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
               )}
             </div>
             <div className="flex flex-wrap gap-3 items-end">
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">輸入狀態</label>
-                <select
-                  value={s.inputTagId}
-                  onChange={(e) => updateStep(idx, { inputTagId: e.target.value, actionId: '', outputs: [] })}
-                  className="border rounded px-2 py-1.5 text-sm"
-                >
-                  <option value="">請選擇</option>
-                  {inputOptions.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.label}
-                    </option>
-                  ))}
-                </select>
-                {avail !== null && <p className="text-[11px] text-gray-400 mt-0.5">目前可用：{avail}</p>}
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">動作站</label>
-                <select
-                  value={s.actionId}
-                  onChange={(e) => setStepAction(idx, e.target.value)}
-                  className="border rounded px-2 py-1.5 text-sm"
-                  disabled={!s.inputTagId}
-                >
-                  <option value="">請選擇</option>
-                  {actionOptions.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {prefs.actionFirst ? (
+                <>
+                  {actionField}
+                  {inputField}
+                </>
+              ) : (
+                <>
+                  {inputField}
+                  {actionField}
+                </>
+              )}
               <div>
                 <label className="block text-xs text-gray-600 mb-1">數量</label>
                 <input
                   type="number"
                   min={1}
                   value={s.qty}
-                  onChange={(e) => updateStep(idx, { qty: e.target.value })}
+                  onChange={(e) => handleQtyChange(idx, e.target.value)}
                   className="border rounded px-2 py-1.5 text-sm w-20"
                 />
               </div>
