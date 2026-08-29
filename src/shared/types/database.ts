@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -306,9 +306,9 @@ export type Database = {
           allow_delete_records: boolean
           block_past_scheduling: boolean
           company_lat: number | null
+          company_lng: number | null
           default_last_month_before_5: boolean
           default_next_month_after_25: boolean
-          company_lng: number | null
           dinner_end: string | null
           dinner_start: string | null
           disable_punch_on_non_workday: boolean
@@ -327,9 +327,9 @@ export type Database = {
           allow_delete_records?: boolean
           block_past_scheduling?: boolean
           company_lat?: number | null
+          company_lng?: number | null
           default_last_month_before_5?: boolean
           default_next_month_after_25?: boolean
-          company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
           disable_punch_on_non_workday?: boolean
@@ -348,9 +348,9 @@ export type Database = {
           allow_delete_records?: boolean
           block_past_scheduling?: boolean
           company_lat?: number | null
+          company_lng?: number | null
           default_last_month_before_5?: boolean
           default_next_month_after_25?: boolean
-          company_lng?: number | null
           dinner_end?: string | null
           dinner_start?: string | null
           disable_punch_on_non_workday?: boolean
@@ -366,6 +366,153 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      process_edges: {
+        Row: {
+          created_at: string
+          from_node_id: string
+          id: string
+          product_id: string | null
+          template_id: string | null
+          to_node_id: string
+        }
+        Insert: {
+          created_at?: string
+          from_node_id: string
+          id?: string
+          product_id?: string | null
+          template_id?: string | null
+          to_node_id: string
+        }
+        Update: {
+          created_at?: string
+          from_node_id?: string
+          id?: string
+          product_id?: string | null
+          template_id?: string | null
+          to_node_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_edges_from_node_id_fkey"
+            columns: ["from_node_id"]
+            isOneToOne: false
+            referencedRelation: "process_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_edges_from_node_id_fkey"
+            columns: ["from_node_id"]
+            isOneToOne: false
+            referencedRelation: "tag_balances"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "process_edges_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_edges_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "process_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_edges_to_node_id_fkey"
+            columns: ["to_node_id"]
+            isOneToOne: false
+            referencedRelation: "process_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_edges_to_node_id_fkey"
+            columns: ["to_node_id"]
+            isOneToOne: false
+            referencedRelation: "tag_balances"
+            referencedColumns: ["tag_id"]
+          },
+        ]
+      }
+      process_nodes: {
+        Row: {
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["process_node_kind"]
+          label: string
+          pos_x: number
+          pos_y: number
+          product_id: string | null
+          template_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["process_node_kind"]
+          label: string
+          pos_x?: number
+          pos_y?: number
+          product_id?: string | null
+          template_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["process_node_kind"]
+          label?: string
+          pos_x?: number
+          pos_y?: number
+          product_id?: string | null
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_nodes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_nodes_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "process_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      process_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_images: {
         Row: {
@@ -402,38 +549,166 @@ export type Database = {
           },
         ]
       }
+      production_log_outputs: {
+        Row: {
+          id: string
+          log_id: string
+          output_tag_id: string
+          qty: number
+        }
+        Insert: {
+          id?: string
+          log_id: string
+          output_tag_id: string
+          qty: number
+        }
+        Update: {
+          id?: string
+          log_id?: string
+          output_tag_id?: string
+          qty?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_log_outputs_log_id_fkey"
+            columns: ["log_id"]
+            isOneToOne: false
+            referencedRelation: "production_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_log_outputs_output_tag_id_fkey"
+            columns: ["output_tag_id"]
+            isOneToOne: false
+            referencedRelation: "process_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_log_outputs_output_tag_id_fkey"
+            columns: ["output_tag_id"]
+            isOneToOne: false
+            referencedRelation: "tag_balances"
+            referencedColumns: ["tag_id"]
+          },
+        ]
+      }
+      production_logs: {
+        Row: {
+          action_node_id: string
+          created_at: string
+          id: string
+          input_tag_id: string
+          log_date: string
+          member_id: string
+          product_id: string
+          qty_consumed: number
+        }
+        Insert: {
+          action_node_id: string
+          created_at?: string
+          id?: string
+          input_tag_id: string
+          log_date: string
+          member_id: string
+          product_id: string
+          qty_consumed: number
+        }
+        Update: {
+          action_node_id?: string
+          created_at?: string
+          id?: string
+          input_tag_id?: string
+          log_date?: string
+          member_id?: string
+          product_id?: string
+          qty_consumed?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_logs_action_node_id_fkey"
+            columns: ["action_node_id"]
+            isOneToOne: false
+            referencedRelation: "process_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_logs_action_node_id_fkey"
+            columns: ["action_node_id"]
+            isOneToOne: false
+            referencedRelation: "tag_balances"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "production_logs_input_tag_id_fkey"
+            columns: ["input_tag_id"]
+            isOneToOne: false
+            referencedRelation: "process_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_logs_input_tag_id_fkey"
+            columns: ["input_tag_id"]
+            isOneToOne: false
+            referencedRelation: "tag_balances"
+            referencedColumns: ["tag_id"]
+          },
+          {
+            foreignKeyName: "production_logs_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_logs_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
+          category: string | null
           created_at: string
           created_by: string | null
           description: string | null
           id: string
+          material: string | null
+          material_thickness_mm: number | null
           name: string
-          pose: string | null
-          process_steps: string | null
-          series: number | null
+          process_template_id: string | null
+          size_note: string | null
+          tags: string[]
           updated_at: string
         }
         Insert: {
+          category?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
+          material?: string | null
+          material_thickness_mm?: number | null
           name: string
-          pose?: string | null
-          process_steps?: string | null
-          series?: number | null
+          process_template_id?: string | null
+          size_note?: string | null
+          tags?: string[]
           updated_at?: string
         }
         Update: {
+          category?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
+          material?: string | null
+          material_thickness_mm?: number | null
           name?: string
-          pose?: string | null
-          process_steps?: string | null
-          series?: number | null
+          process_template_id?: string | null
+          size_note?: string | null
+          tags?: string[]
           updated_at?: string
         }
         Relationships: [
@@ -442,6 +717,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_process_template_id_fkey"
+            columns: ["process_template_id"]
+            isOneToOne: false
+            referencedRelation: "process_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -530,6 +812,41 @@ export type Database = {
           },
         ]
       }
+      schedule_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          preference: Database["public"]["Enums"]["schedule_preference_type"]
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          preference: Database["public"]["Enums"]["schedule_preference_type"]
+          updated_at?: string
+          work_date: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          preference?: Database["public"]["Enums"]["schedule_preference_type"]
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_preferences_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedule_publications: {
         Row: {
           id: string
@@ -566,41 +883,6 @@ export type Database = {
           {
             foreignKeyName: "schedule_publications_published_by_fkey"
             columns: ["published_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      schedule_preferences: {
-        Row: {
-          created_at: string
-          id: string
-          member_id: string
-          preference: Database["public"]["Enums"]["schedule_preference_type"]
-          updated_at: string
-          work_date: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          member_id: string
-          preference: Database["public"]["Enums"]["schedule_preference_type"]
-          updated_at?: string
-          work_date: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          member_id?: string
-          preference?: Database["public"]["Enums"]["schedule_preference_type"]
-          updated_at?: string
-          work_date?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "schedule_preferences_member_id_fkey"
-            columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -778,6 +1060,22 @@ export type Database = {
           },
         ]
       }
+      tag_balances: {
+        Row: {
+          available_qty: number | null
+          product_id: string | null
+          tag_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_nodes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       current_role_name: {
@@ -786,6 +1084,7 @@ export type Database = {
       }
       has_any_owner: { Args: never; Returns: boolean }
       is_owner: { Args: never; Returns: boolean }
+      preference_editable_year_month: { Args: never; Returns: string }
     }
     Enums: {
       attendance_approval_status: "pending" | "approved" | "rejected"
@@ -798,6 +1097,7 @@ export type Database = {
       leave_duration_type: "full_day" | "partial"
       leave_status: "pending" | "approved" | "rejected"
       member_role: "owner" | "staff" | "apprentice" | "guest"
+      process_node_kind: "action" | "tag"
       schedule_preference_type: "prefer_work" | "prefer_off"
       shift_status: "normal" | "unscheduled" | "regular_off" | "special_off"
       work_log_type: "production" | "learning"
@@ -939,6 +1239,7 @@ export const Constants = {
       leave_duration_type: ["full_day", "partial"],
       leave_status: ["pending", "approved", "rejected"],
       member_role: ["owner", "staff", "apprentice", "guest"],
+      process_node_kind: ["action", "tag"],
       schedule_preference_type: ["prefer_work", "prefer_off"],
       shift_status: ["normal", "unscheduled", "regular_off", "special_off"],
       work_log_type: ["production", "learning"],

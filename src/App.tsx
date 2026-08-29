@@ -17,6 +17,9 @@ import { LeavePage } from '@/modules/leave/LeavePage'
 import { MonthlySettlementPage } from '@/modules/settlement/MonthlySettlementPage'
 import { JournalPage } from '@/modules/journal/JournalPage'
 import { ProductsPage } from '@/modules/products/ProductsPage'
+import { ProductDetailPage } from '@/modules/products/ProductDetailPage'
+import { ProcessTemplatesPage } from '@/modules/products/ProcessTemplatesPage'
+import { ProcessTemplateDetailPage } from '@/modules/products/ProcessTemplateDetailPage'
 
 export default function App() {
   return (
@@ -96,6 +99,30 @@ export default function App() {
               element={
                 <RequireRole allow={['owner', 'staff', 'apprentice']}>
                   <ProductsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/products/:id"
+              element={
+                <RequireRole allow={['owner', 'staff', 'apprentice']}>
+                  <ProductDetailPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/process-templates"
+              element={
+                <RequireRole allow={['owner']}>
+                  <ProcessTemplatesPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/process-templates/:id"
+              element={
+                <RequireRole allow={['owner']}>
+                  <ProcessTemplateDetailPage />
                 </RequireRole>
               }
             />
