@@ -73,9 +73,37 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
   const [expandedMenuId, setExpandedMenuId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // browser-style back/forward history: a stack of visited folder ids plus a
+  // pointer into it, separate from currentFolderId itself so back/forward can
+  // move the pointer without treating the move as a brand-new navigation
+  const [historyStack, setHistoryStack] = useState<(string | null)[]>(() => [readStoredFolderId()])
+  const [historyIndex, setHistoryIndex] = useState(0)
+
   const setCurrentFolderId = (id: string | null) => {
     setCurrentFolderIdState(id)
     writeStoredFolderId(id)
+  }
+
+  // user-initiated navigation (clicking a folder/breadcrumb): moves location
+  // and records a new history entry, discarding any forward history
+  const navigateTo = (id: string | null) => {
+    setCurrentFolderId(id)
+    setHistoryStack((prev) => [...prev.slice(0, historyIndex + 1), id])
+    setHistoryIndex((i) => i + 1)
+  }
+
+  const goBack = () => {
+    if (historyIndex === 0) return
+    const newIndex = historyIndex - 1
+    setCurrentFolderId(historyStack[newIndex])
+    setHistoryIndex(newIndex)
+  }
+
+  const goForward = () => {
+    if (historyIndex >= historyStack.length - 1) return
+    const newIndex = historyIndex + 1
+    setCurrentFolderId(historyStack[newIndex])
+    setHistoryIndex(newIndex)
   }
 
   useEffect(() => {
@@ -92,6 +120,8 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
         // fall back to root rather than showing a dead end
         if (currentFolderId && !loaded.some((f) => f.id === currentFolderId)) {
           setCurrentFolderId(null)
+          setHistoryStack([null])
+          setHistoryIndex(0)
         }
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -173,20 +203,39 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
     }
     setFolders((prev) => prev.filter((f) => f.id !== folder.id && !descendantIds.has(f.id)))
     if (currentFolderId === folder.id || descendantIds.has(currentFolderId ?? '')) {
-      setCurrentFolderId(folder.parent_id)
+      navigateTo(folder.parent_id)
     }
   }
 
   return (
     <div>
+      <div className="flex items-center gap-2 mb-2">
+        <button
+          onClick={goBack}
+          disabled={historyIndex === 0}
+          title="上一頁"
+          className="w-7 h-7 flex items-center justify-center rounded border text-sm text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-gray-100"
+        >
+          ←
+        </button>
+        <button
+          onClick={goForward}
+          disabled={historyIndex >= historyStack.length - 1}
+          title="下一頁"
+          className="w-7 h-7 flex items-center justify-center rounded border text-sm text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-gray-100"
+        >
+          →
+        </button>
+      </div>
+
       <div className="flex items-center gap-1 text-sm text-gray-500 mb-3 flex-wrap">
-        <button onClick={() => setCurrentFolderId(null)} className="hover:underline hover:text-black">
+        <button onClick={() => navigateTo(null)} className="hover:underline hover:text-black">
           根目錄
         </button>
         {path.map((f) => (
           <span key={f.id} className="flex items-center gap-1">
             <span>/</span>
-            <button onClick={() => setCurrentFolderId(f.id)} className="hover:underline hover:text-black">
+            <button onClick={() => navigateTo(f.id)} className="hover:underline hover:text-black">
               {f.name}
             </button>
           </span>
@@ -262,13 +311,18 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
               </div>
             </div>
           ) : (
-            <div key={f.id} className="border border-blue-200 bg-blue-50 rounded-lg p-3 hover:border-blue-400">
+            <div
+              key={f.id}
+              onClick={() => navigateTo(f.id)}
+              className="border border-blue-200 bg-blue-50 rounded-lg p-3 hover:border-blue-400 cursor-pointer"
+            >
               <div className="flex items-center gap-2">
-                <button onClick={() => setCurrentFolderId(f.id)} className="flex-1 min-w-0 text-left">
-                  <p className="font-bold text-sm truncate">📁 {f.name}</p>
-                </button>
+                <p className="font-bold text-sm truncate flex-1 min-w-0">📁 {f.name}</p>
                 <button
-                  onClick={() => setExpandedMenuId((cur) => (cur === f.id ? null : f.id))}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setExpandedMenuId((cur) => (cur === f.id ? null : f.id))
+                  }}
                   className="text-xs border border-blue-300 rounded px-1.5 py-0.5 text-blue-700 hover:bg-blue-100 flex-shrink-0"
                   title="管理資料夾"
                 >
@@ -278,7 +332,8 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
               {expandedMenuId === f.id && (
                 <div className="flex gap-2 mt-2">
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation()
                       setRenamingId(f.id)
                       setRenameValue(f.name)
                       setExpandedMenuId(null)
@@ -287,7 +342,13 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
                   >
                     重新命名
                   </button>
-                  <button onClick={() => deleteFolder(f)} className="text-xs text-red-600 underline">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteFolder(f)
+                    }}
+                    className="text-xs text-red-600 underline"
+                  >
                     刪除
                   </button>
                 </div>

@@ -13,6 +13,7 @@ export function ProcessTemplateDetailPage() {
   const [template, setTemplate] = useState<ProcessTemplate | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [unlocked, setUnlocked] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -24,6 +25,9 @@ export function ProcessTemplateDetailPage() {
 
   useEffect(() => {
     load()
+    // switching to a different template (or leaving the page entirely, which
+    // unmounts this component) should always re-lock editing
+    setUnlocked(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -136,7 +140,34 @@ export function ProcessTemplateDetailPage() {
         編輯此範本不會影響已套用過的產品；產品套用時會複製一份獨立的流程。
       </p>
 
-      <ProcessFlowEditor scope={{ type: 'template', id: template.id }} editable={true} />
+      {!unlocked && (
+        <div className="border border-red-200 bg-red-50 rounded-lg p-3 mb-2">
+          <button
+            onClick={() => setUnlocked(true)}
+            className="bg-red-600 text-white rounded px-4 py-1.5 text-sm mb-2 hover:bg-red-700"
+          >
+            解除鎖定
+          </button>
+          <p className="text-xs text-red-700">
+            解除鎖定後，您將直接可以修改下面流程，任何修改都會立即存回範本。若您想保留原始設定，請善用「複製範本」備份。
+          </p>
+        </div>
+      )}
+
+      <ProcessFlowEditor
+        scope={{ type: 'template', id: template.id }}
+        editable={unlocked}
+        toolbarExtra={
+          unlocked ? (
+            <button
+              onClick={() => setUnlocked(false)}
+              className="border rounded px-3 py-1.5 text-sm hover:bg-gray-50"
+            >
+              回到鎖定
+            </button>
+          ) : undefined
+        }
+      />
 
       <ApplyTemplateDiffPanel templateId={template.id} templateName={template.name} />
     </div>

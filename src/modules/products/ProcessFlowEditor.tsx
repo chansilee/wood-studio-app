@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import type { Tables } from '@/shared/types/database'
 
@@ -18,10 +18,12 @@ export function ProcessFlowEditor({
   scope,
   editable,
   onChanged,
+  toolbarExtra,
 }: {
   scope: ProcessFlowScope
   editable: boolean
   onChanged?: () => void
+  toolbarExtra?: ReactNode
 }) {
   const [nodes, setNodes] = useState<NodeRow[]>([])
   const [edges, setEdges] = useState<EdgeRow[]>([])
@@ -366,16 +368,19 @@ export function ProcessFlowEditor({
   return (
     <div>
       {editable && (
-        <div className="flex gap-2 mb-2">
-          <button onClick={addAction} className="border rounded px-3 py-1.5 text-sm hover:bg-gray-50">
-            ＋ 新增動作站
-          </button>
-          <button onClick={addTag} className="border rounded px-3 py-1.5 text-sm hover:bg-gray-50">
-            ＋ 新增標籤
-          </button>
-          <button onClick={clearCanvas} className="border rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
-            清空畫布
-          </button>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex gap-2">
+            <button onClick={addAction} className="border rounded px-3 py-1.5 text-sm hover:bg-gray-50">
+              ＋ 新增動作站
+            </button>
+            <button onClick={addTag} className="border rounded px-3 py-1.5 text-sm hover:bg-gray-50">
+              ＋ 新增標籤
+            </button>
+            <button onClick={clearCanvas} className="border rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+              清空畫布
+            </button>
+          </div>
+          {toolbarExtra}
         </div>
       )}
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
