@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
+import { ProductFolderBrowser } from './ProductFolderBrowser'
 import type { Tables } from '@/shared/types/database'
 
 type Product = Tables<'products'>
@@ -17,6 +18,8 @@ export function ProductsPage() {
   const [newCategory, setNewCategory] = useState('')
   const [newTags, setNewTags] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [folderMode, setFolderMode] = useState(false)
+  const [showFolderHelp, setShowFolderHelp] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -29,6 +32,24 @@ export function ProductsPage() {
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    if (!profile) return
+    supabase
+      .from('product_view_preferences')
+      .select('folder_mode_enabled')
+      .eq('member_id', profile.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setFolderMode(data.folder_mode_enabled)
+      })
+  }, [profile])
+
+  const toggleFolderMode = async (v: boolean) => {
+    setFolderMode(v)
+    if (!profile) return
+    await supabase.from('product_view_preferences').upsert({ member_id: profile.id, folder_mode_enabled: v })
+  }
 
   const filtered = products.filter((p) => {
     const q = query.trim().toLowerCase()
@@ -79,16 +100,58 @@ export function ProductsPage() {
         )}
       </div>
 
-      <div className="relative mb-4 max-w-sm">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="產品搜尋（名稱或 tag）"
-          className="w-full border rounded pl-9 pr-3 py-2 text-sm"
-        />
+      <div className="flex items-center gap-3 mb-4">
+        {!folderMode && (
+          <div className="relative max-w-sm flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="產品搜尋（名稱或 tag）"
+              className="w-full border rounded pl-9 pr-3 py-2 text-sm"
+            />
+          </div>
+        )}
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer ml-auto flex-shrink-0">
+          <input type="checkbox" checked={folderMode} onChange={(e) => toggleFolderMode(e.target.checked)} />
+          資料夾模式顯示
+        </label>
+        <button
+          onClick={() => setShowFolderHelp(true)}
+          className="w-5 h-5 rounded-full border text-xs text-gray-500 hover:bg-gray-100 flex items-center justify-center flex-shrink-0"
+          title="資料夾模式說明"
+        >
+          ?
+        </button>
       </div>
+
+      {showFolderHelp && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowFolderHelp(false)}
+        >
+          <div className="bg-white rounded-lg p-5 max-w-md w-full text-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-medium">資料夾模式說明</h3>
+              <button onClick={() => setShowFolderHelp(false)} className="text-gray-400 hover:text-black text-lg leading-none">
+                ✕
+              </button>
+            </div>
+            <div className="space-y-3 text-gray-700 leading-relaxed">
+              <p>在資料夾模式下，使用者可以創建屬於你自己的分類規則。</p>
+              <p>譬如：在根目錄下創建「大頭柴系列」，裡面再創建「第一彈商品」、「第二彈商品」⋯⋯</p>
+              <p>商品將依 tags 內容「自動解析」分派到所屬的資料夾內。</p>
+              <p>刪除或重新命名資料夾，不會對實體產品資料造成影響。</p>
+              <p>此設計下，一個產品可以分屬於「多個地方呈現」。</p>
+              <p>
+                譬如可以創造資料夾「880 元系列」，未來如果有在商品內新增 tag：880，則他會分別呈現於原本依照彈數排序之位置，以及「880
+                元系列」資料夾位置。
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
 
@@ -133,6 +196,8 @@ export function ProductsPage() {
 
       {loading ? (
         <div>載入中…</div>
+      ) : folderMode ? (
+        <ProductFolderBrowser products={products} />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-gray-400">{products.length === 0 ? '尚無產品' : '找不到符合的產品'}</p>
       ) : (

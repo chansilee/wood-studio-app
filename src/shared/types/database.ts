@@ -549,6 +549,71 @@ export type Database = {
           },
         ]
       }
+      product_folders: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_member_id: string
+          parent_id: string | null
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_member_id: string
+          parent_id?: string | null
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_member_id?: string
+          parent_id?: string | null
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_folders_owner_member_id_fkey"
+            columns: ["owner_member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_folders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "product_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_view_preferences: {
+        Row: {
+          folder_mode_enabled: boolean
+          member_id: string
+        }
+        Insert: {
+          folder_mode_enabled?: boolean
+          member_id: string
+        }
+        Update: {
+          folder_mode_enabled?: boolean
+          member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_view_preferences_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_images: {
         Row: {
           created_at: string
