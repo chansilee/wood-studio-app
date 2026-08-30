@@ -7,6 +7,7 @@ import { JournalPreferencesPanel } from './JournalPreferencesPanel'
 import { EditLogEntryForm } from './EditLogEntryForm'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { formatDateTime } from '@/shared/lib/date'
+import { checkInventoryLockBlock } from '@/shared/lib/inventoryLock'
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('zh-TW', { hour12: false })
@@ -121,6 +122,13 @@ export function JournalPage() {
 
   const deleteLog = async (logId: string) => {
     setError(null)
+    if (profile) {
+      const blockMsg = await checkInventoryLockBlock(profile.id)
+      if (blockMsg) {
+        window.alert(blockMsg)
+        return
+      }
+    }
     if (!window.confirm('確定要刪除這筆日誌嗎？只能刪除最新一筆，此動作無法復原。')) return
     const { error: delErr } = await supabase.from('production_logs').delete().eq('id', logId)
     if (delErr) {

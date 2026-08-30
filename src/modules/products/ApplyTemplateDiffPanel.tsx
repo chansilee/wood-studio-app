@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import type { Tables } from '@/shared/types/database'
@@ -108,6 +108,17 @@ export function ApplyTemplateDiffPanel({ templateId, templateName }: { templateI
     })
   }
 
+  const selectAllRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selected.size > 0 && selected.size < products.length
+    }
+  }, [selected, products])
+
+  const toggleAll = () => {
+    setSelected((prev) => (prev.size === products.length ? new Set() : new Set(products.map((p) => p.id))))
+  }
+
   const computeDiffs = async () => {
     setError(null)
     setDone(false)
@@ -190,6 +201,10 @@ export function ApplyTemplateDiffPanel({ templateId, templateName }: { templateI
 
       {!plans && (
         <>
+          <label className="flex items-center gap-2 text-xs text-gray-600 mb-1.5 cursor-pointer">
+            <input type="checkbox" ref={selectAllRef} checked={selected.size === products.length && products.length > 0} onChange={toggleAll} />
+            全選
+          </label>
           <div className="max-h-56 overflow-y-auto border rounded mb-3 divide-y">
             {products.map((p) => (
               <label key={p.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">

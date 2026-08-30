@@ -179,6 +179,38 @@ export type Database = {
           },
         ]
       }
+      inventory_count_lock: {
+        Row: {
+          draft: Json
+          id: number
+          locked_at: string | null
+          locked_by: string | null
+          reason: string
+        }
+        Insert: {
+          draft?: Json
+          id?: number
+          locked_at?: string | null
+          locked_by?: string | null
+          reason?: string
+        }
+        Update: {
+          draft?: Json
+          id?: number
+          locked_at?: string | null
+          locked_by?: string | null
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_count_lock_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       journal_preferences: {
         Row: {
           action_first: boolean

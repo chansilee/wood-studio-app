@@ -4,6 +4,7 @@ import { useAuth } from '@/shared/hooks/useAuth'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { formatDateTime } from '@/shared/lib/date'
 import { Combobox } from '@/shared/components/Combobox'
+import { checkInventoryLockBlock } from '@/shared/lib/inventoryLock'
 import type { Tables } from '@/shared/types/database'
 
 type Product = Tables<'products'>
@@ -41,6 +42,8 @@ export function LogManagementPanel({
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [recentAdjustments, setRecentAdjustments] = useState<RecentAdjustment[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [linkSameTime, setLinkSameTime] = useState(false)
 
   useEffect(() => {
     supabase
@@ -87,22 +90,61 @@ export function LogManagementPanel({
     const prodMap = Object.fromEntries((prods ?? []).map((p) => [p.id, p.name]))
     const nodeMap = Object.fromEntries((nodes ?? []).map((n) => [n.id, n.label]))
     const memberMap = Object.fromEntries((members ?? []).map((m) => [m.id, effectiveDisplayName(m)]))
-    setRecentAdjustments(
-      list.map((r) => ({
-        id: r.id,
-        productName: prodMap[r.product_id] ?? '?',
-        tagLabel: nodeMap[r.tag_id] ?? '?',
-        qtyDelta: r.qty_delta,
-        reason: r.reason,
-        adjustedAt: r.adjusted_at,
-        adjustedByName: r.adjusted_by ? (memberMap[r.adjusted_by] ?? '?') : '?',
-      }))
-    )
+    const mapped = list.map((r) => ({
+      id: r.id,
+      productName: prodMap[r.product_id] ?? '?',
+      tagLabel: nodeMap[r.tag_id] ?? '?',
+      qtyDelta: r.qty_delta,
+      reason: r.reason,
+      adjustedAt: r.adjusted_at,
+      adjustedByName: r.adjusted_by ? (memberMap[r.adjusted_by] ?? '?') : '?',
+    }))
+    setRecentAdjustments(mapped)
+    setSelectedIds((prev) => new Set(Array.from(prev).filter((id) => mapped.some((r) => r.id === id))))
+  }
+
+  const toggleAdjustmentSelection = (a: RecentAdjustment) => {
+    const group = linkSameTime ? recentAdjustments.filter((r) => r.adjustedAt === a.adjustedAt).map((r) => r.id) : [a.id]
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(a.id)) {
+        group.forEach((id) => next.delete(id))
+      } else {
+        group.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }
+
+  const bulkDeleteAdjustments = async () => {
+    setError(null)
+    if (profile) {
+      const blockMsg = await checkInventoryLockBlock(profile.id)
+      if (blockMsg) {
+        window.alert(blockMsg)
+        return
+      }
+    }
+    if (!window.confirm(`確定要刪除這 ${selectedIds.size} 筆校正紀錄嗎？此動作無法復原。`)) return
+    const { error: delErr } = await supabase.from('stock_adjustments').delete().in('id', Array.from(selectedIds))
+    if (delErr) {
+      setError(delErr.message)
+      return
+    }
+    setSelectedIds(new Set())
+    loadRecentAdjustments()
   }
 
   const submitAdjustment = async () => {
     setError(null)
     setMessage(null)
+    if (profile) {
+      const blockMsg = await checkInventoryLockBlock(profile.id)
+      if (blockMsg) {
+        setError(blockMsg)
+        return
+      }
+    }
     if (!productId || !tagId) {
       setError('請選擇產品與狀態標籤')
       return
@@ -133,6 +175,13 @@ export function LogManagementPanel({
 
   const deleteAdjustment = async (id: string) => {
     setError(null)
+    if (profile) {
+      const blockMsg = await checkInventoryLockBlock(profile.id)
+      if (blockMsg) {
+        window.alert(blockMsg)
+        return
+      }
+    }
     if (!window.confirm('確定要刪除這筆校正紀錄嗎？此動作無法復原。')) return
     const { error: delErr } = await supabase.from('stock_adjustments').delete().eq('id', id)
     if (delErr) {
@@ -221,7 +270,23 @@ export function LogManagementPanel({
         {message && <p className="text-green-700 text-sm">{message}</p>}
       </div>
 
-      <h2 className="font-medium mb-2 text-sm">最近校正紀錄</h2>
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <h2 className="font-medium text-sm">最近校正紀錄</h2>
+        <div className="flex items-center gap-3 text-xs">
+          <label className="flex items-center gap-1.5 cursor-pointer text-gray-600">
+            <input type="checkbox" checked={linkSameTime} onChange={(e) => setLinkSameTime(e.target.checked)} />
+            同時間一起選擇
+          </label>
+          {selectedIds.size > 0 && (
+            <>
+              <span className="text-gray-600">已選擇：{selectedIds.size}</span>
+              <button onClick={bulkDeleteAdjustments} className="text-red-600 underline">
+                全部刪除
+              </button>
+            </>
+          )}
+        </div>
+      </div>
       {recentAdjustments.length === 0 ? (
         <p className="text-sm text-gray-400">尚無校正紀錄</p>
       ) : (
@@ -237,12 +302,12 @@ export function LogManagementPanel({
                     {a.qtyDelta >= 0 ? `+${a.qtyDelta}` : a.qtyDelta}
                   </span>
                 </p>
-                <button
-                  onClick={() => deleteAdjustment(a.id)}
-                  className="text-red-600 text-xs underline whitespace-nowrap flex-shrink-0"
-                >
-                  刪除
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <input type="checkbox" checked={selectedIds.has(a.id)} onChange={() => toggleAdjustmentSelection(a)} />
+                  <button onClick={() => deleteAdjustment(a.id)} className="text-red-600 text-xs underline whitespace-nowrap">
+                    刪除
+                  </button>
+                </div>
               </div>
               {a.reason && <p className="text-xs text-gray-500 mt-0.5">原因：{a.reason}</p>}
             </div>

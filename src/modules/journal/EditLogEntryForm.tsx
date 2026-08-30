@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
+import { useAuth } from '@/shared/hooks/useAuth'
+import { checkInventoryLockBlock } from '@/shared/lib/inventoryLock'
 import type { Tables } from '@/shared/types/database'
 
 type NodeRow = Tables<'process_nodes'>
@@ -31,6 +33,7 @@ export function EditLogEntryForm({
   onSaved: () => void
   onCancel: () => void
 }) {
+  const { profile } = useAuth()
   const [nodes, setNodes] = useState<NodeRow[]>([])
   const [edges, setEdges] = useState<EdgeRow[]>([])
   const [inputTagId, setInputTagId] = useState(initialInputTagId)
@@ -88,6 +91,13 @@ export function EditLogEntryForm({
     if (outputSum() !== qtyNum) {
       setError(`良品／不良品加總（${outputSum()}）必須等於數量（${qtyNum}）`)
       return
+    }
+    if (profile) {
+      const blockMsg = await checkInventoryLockBlock(profile.id)
+      if (blockMsg) {
+        setError(blockMsg)
+        return
+      }
     }
     setSaving(true)
     const { error: rpcErr } = await supabase.rpc('edit_latest_production_log', {

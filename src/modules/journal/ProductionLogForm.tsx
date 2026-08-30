@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { todayStr } from '@/shared/lib/date'
+import { checkInventoryLockBlock } from '@/shared/lib/inventoryLock'
 import { Combobox } from '@/shared/components/Combobox'
 import type { JournalPrefs } from './JournalPreferencesPanel'
 import type { Tables } from '@/shared/types/database'
@@ -35,6 +36,7 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [prefs, setPrefs] = useState<JournalPrefs>(DEFAULT_PREFS)
+  const [lockMessage, setLockMessage] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -43,6 +45,11 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
       .order('name')
       .then(({ data }) => setProducts(data ?? []))
   }, [])
+
+  useEffect(() => {
+    if (!profile) return
+    checkInventoryLockBlock(profile.id).then(setLockMessage)
+  }, [profile])
 
   useEffect(() => {
     if (!profile) return
@@ -226,6 +233,12 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
   const submit = async () => {
     setError(null)
     if (!profile || !productId) return
+    const blockMsg = await checkInventoryLockBlock(profile.id)
+    if (blockMsg) {
+      setLockMessage(blockMsg)
+      setError(blockMsg)
+      return
+    }
     if (steps.length === 0) {
       setError('請至少填寫一個站別')
       return
@@ -302,6 +315,9 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
 
   return (
     <div className="border rounded-lg p-4">
+      {lockMessage && (
+        <p className="text-xs text-amber-700 mb-3 border border-amber-200 bg-amber-50 rounded px-3 py-2">{lockMessage}</p>
+      )}
       <div className="flex flex-wrap gap-3 mb-3">
         <div>
           <label className="block text-xs text-gray-600 mb-1">產品</label>
@@ -444,7 +460,7 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
         <div>
           <button
             onClick={submit}
-            disabled={submitting}
+            disabled={submitting || !!lockMessage}
             className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
           >
             {submitting ? '送出中…' : '送出登記'}

@@ -11,7 +11,7 @@ type ProductFolder = Tables<'product_folders'>
 // current price, treated the same way — is a literal substring of the
 // folder's name. Nothing is ever stored, so this is recomputed on every
 // render from whatever the current tags/price/name are.
-function productMatchesFolder(product: Product, folderName: string, price: number | undefined): boolean {
+export function productMatchesFolder(product: Product, folderName: string, price: number | undefined): boolean {
   if (product.tags.some((tag) => tag.trim() !== '' && folderName.includes(tag))) return true
   if (price !== undefined && folderName.includes(String(price))) return true
   return false
@@ -72,6 +72,13 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
   const [renameValue, setRenameValue] = useState('')
   const [expandedMenuId, setExpandedMenuId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // drag-to-reorder among siblings: draggedFolderId is the card being
+  // dragged; dragOrderIds is a live-reordered snapshot of the current
+  // level's ids, shuffled in real time as the drag passes over other cards,
+  // then persisted as the new sort_order once the drag ends
+  const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null)
+  const [dragOrderIds, setDragOrderIds] = useState<string[] | null>(null)
 
   // browser-style back/forward history: a stack of visited folder ids plus a
   // pointer into it, separate from currentFolderId itself so back/forward can
@@ -142,6 +149,38 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
   const childFolders = folders
     .filter((f) => f.parent_id === currentFolderId)
     .sort((a, b) => a.sort_order - b.sort_order)
+
+  // while a drag is in progress, render dragOrderIds' live-shuffled order
+  // instead of the DB-backed sort_order
+  const displayChildFolders = dragOrderIds
+    ? (dragOrderIds.map((id) => childFolders.find((f) => f.id === id)).filter(Boolean) as ProductFolder[])
+    : childFolders
+
+  const handleFolderDragOver = (targetId: string) => {
+    if (!draggedFolderId || draggedFolderId === targetId || !dragOrderIds) return
+    const from = dragOrderIds.indexOf(draggedFolderId)
+    const to = dragOrderIds.indexOf(targetId)
+    if (from === -1 || to === -1 || from === to) return
+    const next = [...dragOrderIds]
+    next.splice(from, 1)
+    next.splice(to, 0, draggedFolderId)
+    setDragOrderIds(next)
+  }
+
+  const handleFolderDragEnd = async () => {
+    if (dragOrderIds) {
+      const finalOrder = dragOrderIds
+      setFolders((prev) =>
+        prev.map((f) => {
+          const idx = finalOrder.indexOf(f.id)
+          return idx === -1 ? f : { ...f, sort_order: idx }
+        })
+      )
+      await Promise.all(finalOrder.map((id, idx) => supabase.from('product_folders').update({ sort_order: idx }).eq('id', id)))
+    }
+    setDraggedFolderId(null)
+    setDragOrderIds(null)
+  }
 
   // products matching every folder name along the current path (cumulative
   // AND as you drill down); root (empty path) matches everything
@@ -285,7 +324,7 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
           </div>
         )}
 
-        {childFolders.map((f) =>
+        {displayChildFolders.map((f) =>
           renamingId === f.id ? (
             <div key={f.id} className="border-2 border-blue-300 bg-blue-50 rounded-lg p-3">
               <input
@@ -313,8 +352,18 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
           ) : (
             <div
               key={f.id}
+              draggable
+              onDragStart={() => {
+                setDraggedFolderId(f.id)
+                setDragOrderIds(childFolders.map((c) => c.id))
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                handleFolderDragOver(f.id)
+              }}
+              onDragEnd={handleFolderDragEnd}
               onClick={() => navigateTo(f.id)}
-              className="border border-blue-200 bg-blue-50 rounded-lg p-3 hover:border-blue-400 cursor-pointer"
+              className={`border border-blue-200 bg-blue-50 rounded-lg p-3 hover:border-blue-400 cursor-grab active:cursor-grabbing ${draggedFolderId === f.id ? 'opacity-40' : ''}`}
             >
               <div className="flex items-center gap-2">
                 <p className="font-bold text-sm truncate flex-1 min-w-0">📁 {f.name}</p>
