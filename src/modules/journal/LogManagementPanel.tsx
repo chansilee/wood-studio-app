@@ -3,6 +3,7 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { formatDateTime } from '@/shared/lib/date'
+import { Combobox } from '@/shared/components/Combobox'
 import type { Tables } from '@/shared/types/database'
 
 type Product = Tables<'products'>
@@ -164,14 +165,13 @@ export function LogManagementPanel({
         <div className="flex flex-wrap gap-3 items-end mb-2">
           <div>
             <label className="block text-xs text-gray-600 mb-1">產品</label>
-            <select value={productId} onChange={(e) => setProductId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">請選擇</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <Combobox
+              options={products.map((p) => ({ value: p.id, label: p.name }))}
+              value={productId}
+              onChange={setProductId}
+              placeholder="輸入或選擇產品"
+              className="w-48"
+            />
           </div>
           <div>
             <label className="block text-xs text-gray-600 mb-1">狀態標籤</label>

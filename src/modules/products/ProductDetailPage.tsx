@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { ProcessFlowEditor } from './ProcessFlowEditor'
+import { ProductPriceTable } from './ProductPriceTable'
 import { formatDateTime } from '@/shared/lib/date'
 import type { Tables } from '@/shared/types/database'
 
@@ -35,6 +36,7 @@ export function ProductDetailPage() {
   const [applying, setApplying] = useState(false)
   const [appliedTemplates, setAppliedTemplates] = useState<TemplateApplication[]>([])
   const [currentTemplateNames, setCurrentTemplateNames] = useState<Record<string, string>>({})
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null)
 
   const load = async () => {
     if (!id) return
@@ -62,6 +64,12 @@ export function ProductDetailPage() {
     setAdjustmentCount(count ?? 0)
   }
 
+  const loadCurrentPrice = async () => {
+    if (!id) return
+    const { data } = await supabase.from('current_product_prices').select('price').eq('product_id', id).maybeSingle()
+    setCurrentPrice(data?.price ?? null)
+  }
+
   const loadBalances = async () => {
     if (!id) return
     const [{ data: nodeRows }, { data: balRows }] = await Promise.all([
@@ -78,6 +86,7 @@ export function ProductDetailPage() {
     loadNodeCount()
     loadLogCount()
     loadAdjustmentCount()
+    loadCurrentPrice()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, refreshKey])
 
@@ -267,18 +276,7 @@ export function ProductDetailPage() {
 
       <div className="mb-6">
         <h1 className="text-xl font-semibold mb-1">{product.name}</h1>
-        <label className="block text-[11px] text-gray-400 mb-0.5">產品類別</label>
-        {canEdit ? (
-          <input
-            type="text"
-            defaultValue={product.category ?? ''}
-            placeholder="類別"
-            onBlur={(e) => update({ category: e.target.value.trim() || null })}
-            className="w-full border rounded px-2 py-1.5 text-sm max-w-xs"
-          />
-        ) : (
-          <p className="text-sm text-gray-500">{display(product.category)}</p>
-        )}
+        <p className="text-sm text-gray-500">目前價格：{currentPrice !== null ? `$${currentPrice}` : '尚未設定'}</p>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4 mb-6">
@@ -365,6 +363,16 @@ export function ProductDetailPage() {
             <p className="text-sm text-gray-500 whitespace-pre-wrap">{display(product.description)}</p>
           )}
         </div>
+      </div>
+
+      <h2 className="font-medium mb-2">基礎價格</h2>
+      <div className="mb-6">
+        <ProductPriceTable
+          productId={product.id}
+          createdAt={product.created_at}
+          editable={canEdit}
+          onChanged={loadCurrentPrice}
+        />
       </div>
 
       <h2 className="font-medium mb-2">生產流程</h2>

@@ -7,11 +7,14 @@ import type { Tables } from '@/shared/types/database'
 type Product = Tables<'products'>
 type ProductFolder = Tables<'product_folders'>
 
-// A product "belongs" to a folder purely because one of its tags is a
-// literal substring of the folder's name — nothing is ever stored, so this
-// is recomputed on every render from whatever the current tags/name are.
-function productMatchesFolder(product: Product, folderName: string): boolean {
-  return product.tags.some((tag) => tag.trim() !== '' && folderName.includes(tag))
+// A product "belongs" to a folder purely because one of its tags — or its
+// current price, treated the same way — is a literal substring of the
+// folder's name. Nothing is ever stored, so this is recomputed on every
+// render from whatever the current tags/price/name are.
+function productMatchesFolder(product: Product, folderName: string, price: number | undefined): boolean {
+  if (product.tags.some((tag) => tag.trim() !== '' && folderName.includes(tag))) return true
+  if (price !== undefined && folderName.includes(String(price))) return true
+  return false
 }
 
 function collectDescendantIds(folderId: string, all: ProductFolder[]): Set<string> {
@@ -29,17 +32,51 @@ function collectDescendantIds(folderId: string, all: ProductFolder[]): Set<strin
   return ids
 }
 
-export function ProductFolderBrowser({ products }: { products: Product[] }) {
+// remembers the last folder browsed this tab session, so navigating into a
+// product and back via "返回產品參考" resumes where you were instead of
+// resetting to the root — deliberately sessionStorage, not a synced
+// preference, since it's transient "where was I" state, not a setting
+const FOLDER_STORAGE_KEY = 'productFolderLastId'
+
+function readStoredFolderId(): string | null {
+  try {
+    return sessionStorage.getItem(FOLDER_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeStoredFolderId(id: string | null) {
+  try {
+    if (id) sessionStorage.setItem(FOLDER_STORAGE_KEY, id)
+    else sessionStorage.removeItem(FOLDER_STORAGE_KEY)
+  } catch {
+    // ignore (private browsing etc.)
+  }
+}
+
+// called from ProductsPage when 資料夾模式顯示 is turned off, so leaving
+// folder mode always starts back at the root next time it's turned on
+export function clearRememberedProductFolder() {
+  writeStoredFolderId(null)
+}
+
+export function ProductFolderBrowser({ products, prices }: { products: Product[]; prices: Record<string, number> }) {
   const { profile } = useAuth()
   const [folders, setFolders] = useState<ProductFolder[]>([])
   const [loading, setLoading] = useState(true)
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
+  const [currentFolderId, setCurrentFolderIdState] = useState<string | null>(readStoredFolderId)
   const [creating, setCreating] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [expandedMenuId, setExpandedMenuId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const setCurrentFolderId = (id: string | null) => {
+    setCurrentFolderIdState(id)
+    writeStoredFolderId(id)
+  }
 
   useEffect(() => {
     if (!profile) return
@@ -48,9 +85,16 @@ export function ProductFolderBrowser({ products }: { products: Product[] }) {
       .select('*')
       .eq('owner_member_id', profile.id)
       .then(({ data }) => {
-        setFolders(data ?? [])
+        var loaded = data ?? []
+        setFolders(loaded)
         setLoading(false)
+        // the remembered folder may have been renamed away/deleted since —
+        // fall back to root rather than showing a dead end
+        if (currentFolderId && !loaded.some((f) => f.id === currentFolderId)) {
+          setCurrentFolderId(null)
+        }
       })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile])
 
   if (loading) return <div>載入中…</div>
@@ -71,10 +115,12 @@ export function ProductFolderBrowser({ products }: { products: Product[] }) {
 
   // products matching every folder name along the current path (cumulative
   // AND as you drill down); root (empty path) matches everything
-  const matchingProducts = products.filter((p) => path.every((f) => productMatchesFolder(p, f.name)))
+  const matchingProducts = products.filter((p) => path.every((f) => productMatchesFolder(p, f.name, prices[p.id])))
   // a product with a more specific home in a direct child folder surfaces
   // there instead, so it doesn't also clutter this level
-  const visibleProducts = matchingProducts.filter((p) => !childFolders.some((child) => productMatchesFolder(p, child.name)))
+  const visibleProducts = matchingProducts.filter(
+    (p) => !childFolders.some((child) => productMatchesFolder(p, child.name, prices[p.id]))
+  )
 
   const createFolder = async () => {
     var clean = newFolderName.trim()
@@ -170,7 +216,7 @@ export function ProductFolderBrowser({ products }: { products: Product[] }) {
             />
             {newFolderName.trim() && (
               <p className="text-[11px] text-blue-700 mb-1">
-                目前符合 {matchingProducts.filter((p) => productMatchesFolder(p, newFolderName.trim())).length} 個商品
+                目前符合 {matchingProducts.filter((p) => productMatchesFolder(p, newFolderName.trim(), prices[p.id])).length} 個商品
               </p>
             )}
             <div className="flex gap-2">
@@ -203,7 +249,7 @@ export function ProductFolderBrowser({ products }: { products: Product[] }) {
               />
               {renameValue.trim() && (
                 <p className="text-[11px] text-blue-700 mb-1">
-                  目前符合 {matchingProducts.filter((p) => productMatchesFolder(p, renameValue.trim())).length} 個商品
+                  目前符合 {matchingProducts.filter((p) => productMatchesFolder(p, renameValue.trim(), prices[p.id])).length} 個商品
                 </p>
               )}
               <div className="flex gap-2">
@@ -253,7 +299,7 @@ export function ProductFolderBrowser({ products }: { products: Product[] }) {
         {visibleProducts.map((p) => (
           <Link key={p.id} to={`/products/${p.id}`} className="border rounded-lg p-3 hover:border-gray-400 hover:bg-gray-50 block">
             <p className="font-medium text-sm mb-1">{p.name}</p>
-            {p.category && <p className="text-xs text-gray-500 mb-1">{p.category}</p>}
+            {prices[p.id] !== undefined && <p className="text-xs text-gray-500 mb-1">${prices[p.id]}</p>}
             {p.tags.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {p.tags.map((t) => (

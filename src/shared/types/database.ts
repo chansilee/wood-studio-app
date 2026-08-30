@@ -701,6 +701,48 @@ export type Database = {
           },
         ]
       }
+      product_prices: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          effective_date: string
+          id: string
+          price: number
+          product_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          effective_date: string
+          id?: string
+          price: number
+          product_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          id?: string
+          price?: number
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_prices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_prices_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       production_log_outputs: {
         Row: {
           id: string
@@ -835,7 +877,6 @@ export type Database = {
       }
       products: {
         Row: {
-          category: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -848,7 +889,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          category?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -861,7 +901,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          category?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -1270,6 +1309,22 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      current_product_prices: {
+        Row: {
+          effective_date: string | null
+          price: number | null
+          product_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_prices_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]

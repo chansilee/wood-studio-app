@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
-import { ProductFolderBrowser } from './ProductFolderBrowser'
+import { ProductFolderBrowser, clearRememberedProductFolder } from './ProductFolderBrowser'
 import type { Tables } from '@/shared/types/database'
 
 type Product = Tables<'products'>
@@ -15,17 +15,23 @@ export function ProductsPage() {
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
-  const [newCategory, setNewCategory] = useState('')
   const [newTags, setNewTags] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [folderMode, setFolderMode] = useState(false)
   const [showFolderHelp, setShowFolderHelp] = useState(false)
+  const [prices, setPrices] = useState<Record<string, number>>({})
 
   const load = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false })
+    const [{ data, error }, { data: priceRows }] = await Promise.all([
+      supabase.from('products').select('*').order('created_at', { ascending: false }),
+      supabase.from('current_product_prices').select('product_id, price'),
+    ])
     if (error) setError(error.message)
     setProducts(data ?? [])
+    setPrices(
+      Object.fromEntries((priceRows ?? []).filter((r) => r.product_id && r.price !== null).map((r) => [r.product_id as string, r.price as number]))
+    )
     setLoading(false)
   }
 
@@ -47,6 +53,7 @@ export function ProductsPage() {
 
   const toggleFolderMode = async (v: boolean) => {
     setFolderMode(v)
+    if (!v) clearRememberedProductFolder()
     if (!profile) return
     await supabase.from('product_view_preferences').upsert({ member_id: profile.id, folder_mode_enabled: v })
   }
@@ -54,7 +61,8 @@ export function ProductsPage() {
   const filtered = products.filter((p) => {
     const q = query.trim().toLowerCase()
     if (!q) return true
-    return p.name.toLowerCase().includes(q) || p.tags.some((t) => t.toLowerCase().includes(q))
+    const priceStr = prices[p.id] !== undefined ? String(prices[p.id]) : ''
+    return p.name.toLowerCase().includes(q) || p.tags.some((t) => t.toLowerCase().includes(q)) || priceStr.includes(q)
   })
 
   const submitAdd = async () => {
@@ -69,13 +77,12 @@ export function ProductsPage() {
       .filter(Boolean)
     const { error } = await supabase
       .from('products')
-      .insert({ name: newName.trim(), category: newCategory.trim() || null, tags, created_by: profile?.id })
+      .insert({ name: newName.trim(), tags, created_by: profile?.id })
     if (error) {
       setError(error.message)
       return
     }
     setNewName('')
-    setNewCategory('')
     setNewTags('')
     setAdding(false)
     load()
@@ -108,7 +115,7 @@ export function ProductsPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="產品搜尋（名稱或 tag）"
+              placeholder="產品搜尋（名稱、tag 或價格）"
               className="w-full border rounded pl-9 pr-3 py-2 text-sm"
             />
           </div>
@@ -141,7 +148,7 @@ export function ProductsPage() {
             <div className="space-y-3 text-gray-700 leading-relaxed">
               <p>在資料夾模式下，使用者可以創建屬於你自己的分類規則。</p>
               <p>譬如：在根目錄下創建「大頭柴系列」，裡面再創建「第一彈商品」、「第二彈商品」⋯⋯</p>
-              <p>商品將依 tags 內容「自動解析」分派到所屬的資料夾內。</p>
+              <p>商品將依 tags 內容、以及目前的基礎價格，「自動解析」分派到所屬的資料夾內。</p>
               <p>刪除或重新命名資料夾，不會對實體產品資料造成影響。</p>
               <p>此設計下，一個產品可以分屬於「多個地方呈現」。</p>
               <p>
@@ -163,13 +170,6 @@ export function ProductsPage() {
               placeholder="產品名稱，例如：坐柴"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="w-full border rounded px-2 py-1.5 text-sm"
-            />
-            <input
-              type="text"
-              placeholder="類別，例如：木雕柴犬"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
               className="w-full border rounded px-2 py-1.5 text-sm"
             />
             <input
@@ -197,7 +197,7 @@ export function ProductsPage() {
       {loading ? (
         <div>載入中…</div>
       ) : folderMode ? (
-        <ProductFolderBrowser products={products} />
+        <ProductFolderBrowser products={products} prices={prices} />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-gray-400">{products.length === 0 ? '尚無產品' : '找不到符合的產品'}</p>
       ) : (
@@ -209,7 +209,7 @@ export function ProductsPage() {
               className="border rounded-lg p-3 hover:border-gray-400 hover:bg-gray-50 block"
             >
               <p className="font-medium text-sm mb-1">{p.name}</p>
-              {p.category && <p className="text-xs text-gray-500 mb-1">{p.category}</p>}
+              {prices[p.id] !== undefined && <p className="text-xs text-gray-500 mb-1">${prices[p.id]}</p>}
               {p.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {p.tags.map((t) => (
