@@ -26,7 +26,7 @@ export function Layout() {
           <NavLink to="/products" className={navItemClass}>產品參考</NavLink>
           {isOwner && <NavLink to="/members" className={navItemClass}>成員管理</NavLink>}
         </nav>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-3 text-sm ml-auto">
           {profile && (
             <span>
               {effectiveDisplayName(profile)}（{ROLE_LABELS[profile.role]}）

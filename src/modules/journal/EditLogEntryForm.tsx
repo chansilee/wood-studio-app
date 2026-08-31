@@ -55,9 +55,15 @@ export function EditLogEntryForm({
   }, [productId])
 
   const findNode = (id: string) => nodes.find((n) => n.id === id)
-  const tagOptions = nodes.filter((n) => n.kind === 'tag')
+  // 等待節點 are fully automatic — never selectable by a human, and any tag
+  // that only feeds one shouldn't be offered as an input either
+  const feedsOnlyWaitNode = (tagId: string) =>
+    edges.some((e) => e.from_node_id === tagId && findNode(e.to_node_id)?.wait_days != null)
+  const tagOptions = nodes.filter((n) => n.kind === 'tag' && !feedsOnlyWaitNode(n.id))
   const actionOptions = inputTagId
-    ? (edges.filter((e) => e.from_node_id === inputTagId).map((e) => findNode(e.to_node_id)).filter(Boolean) as NodeRow[])
+    ? ((edges.filter((e) => e.from_node_id === inputTagId).map((e) => findNode(e.to_node_id)).filter(Boolean) as NodeRow[]).filter(
+        (n) => n.wait_days == null
+      ))
     : []
 
   const setAction = (id: string) => {

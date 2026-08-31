@@ -9,6 +9,7 @@ import type { Tables } from '@/shared/types/database'
 
 type Product = Tables<'products'>
 type NodeRow = Tables<'process_nodes'>
+type EdgeRow = Tables<'process_edges'>
 
 interface RecentAdjustment {
   id: string
@@ -35,6 +36,7 @@ export function LogManagementPanel({
   const [products, setProducts] = useState<Product[]>([])
   const [productId, setProductId] = useState('')
   const [tags, setTags] = useState<NodeRow[]>([])
+  const [waitEdges, setWaitEdges] = useState<EdgeRow[]>([])
   const [tagId, setTagId] = useState('')
   const [delta, setDelta] = useState('')
   const [reason, setReason] = useState('')
@@ -57,16 +59,24 @@ export function LogManagementPanel({
   useEffect(() => {
     if (!productId) {
       setTags([])
+      setWaitEdges([])
       setTagId('')
       return
     }
-    supabase
-      .from('process_nodes')
-      .select('*')
-      .eq('product_id', productId)
-      .eq('kind', 'tag')
-      .then(({ data }) => setTags((data ?? []).filter((t) => t.label !== '開始')))
+    Promise.all([
+      supabase.from('process_nodes').select('*').eq('product_id', productId).eq('kind', 'tag'),
+      supabase.from('process_edges').select('*').eq('product_id', productId),
+    ]).then(([{ data: nodeRows }, { data: edgeRows }]) => {
+      const allNodes = nodeRows ?? []
+      setTags(allNodes.filter((t) => t.label !== '開始'))
+      // a tag whose outgoing edge leads to an automatic 等待節點 shouldn't be
+      // manually corrected here — its balance is meant to drain on its own
+      const waitNodeIds = new Set(allNodes.filter((n) => n.wait_days != null).map((n) => n.id))
+      setWaitEdges((edgeRows ?? []).filter((e) => waitNodeIds.has(e.to_node_id)))
+    })
   }, [productId])
+
+  const feedsWaitNode = (tagId: string) => waitEdges.some((e) => e.from_node_id === tagId)
 
   const loadRecentAdjustments = async () => {
     const { data: rows } = await supabase
@@ -232,8 +242,9 @@ export function LogManagementPanel({
             >
               <option value="">請選擇</option>
               {tags.map((t) => (
-                <option key={t.id} value={t.id}>
+                <option key={t.id} value={t.id} disabled={feedsWaitNode(t.id)}>
                   {t.label}
+                  {feedsWaitNode(t.id) ? '（自動流程中，無法手動校正）' : ''}
                 </option>
               ))}
             </select>
@@ -272,7 +283,7 @@ export function LogManagementPanel({
 
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <h2 className="font-medium text-sm">最近校正紀錄</h2>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-3 text-xs ml-auto">
           <label className="flex items-center gap-1.5 cursor-pointer text-gray-600">
             <input type="checkbox" checked={linkSameTime} onChange={(e) => setLinkSameTime(e.target.checked)} />
             同時間一起選擇

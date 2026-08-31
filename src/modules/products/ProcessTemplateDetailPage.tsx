@@ -93,6 +93,7 @@ export function ProcessTemplateDetailPage() {
         label: nd.label,
         pos_x: nd.pos_x,
         pos_y: nd.pos_y,
+        wait_days: nd.wait_days,
         template_id: newTemplate.id,
       }))
       await supabase.from('process_nodes').insert(newNodes)
@@ -117,7 +118,7 @@ export function ProcessTemplateDetailPage() {
         <Link to="/process-templates" className="text-xs text-blue-700 underline">
           ← 返回生產流程列表
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 ml-auto">
           <button onClick={duplicateTemplate} className="text-blue-700 text-xs underline">
             複製範本
           </button>

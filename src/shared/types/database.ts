@@ -514,6 +514,7 @@ export type Database = {
           pos_y: number
           product_id: string | null
           template_id: string | null
+          wait_days: number | null
         }
         Insert: {
           created_at?: string
@@ -524,6 +525,7 @@ export type Database = {
           pos_y?: number
           product_id?: string | null
           template_id?: string | null
+          wait_days?: number | null
         }
         Update: {
           created_at?: string
@@ -534,6 +536,7 @@ export type Database = {
           pos_y?: number
           product_id?: string | null
           template_id?: string | null
+          wait_days?: number | null
         }
         Relationships: [
           {
@@ -827,7 +830,7 @@ export type Database = {
           id: string
           input_tag_id: string
           log_date: string
-          member_id: string
+          member_id: string | null
           product_id: string
           qty_consumed: number
         }
@@ -839,7 +842,7 @@ export type Database = {
           id?: string
           input_tag_id: string
           log_date: string
-          member_id: string
+          member_id?: string | null
           product_id: string
           qty_consumed: number
         }
@@ -851,7 +854,7 @@ export type Database = {
           id?: string
           input_tag_id?: string
           log_date?: string
-          member_id?: string
+          member_id?: string | null
           product_id?: string
           qty_consumed?: number
         }
@@ -1397,6 +1400,7 @@ export type Database = {
       has_any_owner: { Args: never; Returns: boolean }
       is_owner: { Args: never; Returns: boolean }
       preference_editable_year_month: { Args: never; Returns: string }
+      resolve_matured_wait_logs: { Args: never; Returns: undefined }
     }
     Enums: {
       attendance_approval_status: "pending" | "approved" | "rejected"

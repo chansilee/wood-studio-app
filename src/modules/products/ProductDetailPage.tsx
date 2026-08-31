@@ -174,6 +174,7 @@ export function ProductDetailPage() {
       label: n.label,
       pos_x: n.pos_x,
       pos_y: n.pos_y,
+      wait_days: n.wait_days,
       product_id: id,
     }))
     const newEdges = (srcEdges ?? []).map((e) => ({
@@ -255,7 +256,7 @@ export function ProductDetailPage() {
           ← 返回產品參考
         </Link>
         {isOwner && (
-          <div className="flex items-center gap-0.5 border rounded-full p-0.5 bg-gray-50">
+          <div className="flex items-center gap-0.5 border rounded-full p-0.5 bg-gray-50 ml-auto">
             <button
               onClick={() => setMode('view')}
               className={`text-xs px-3 py-1 rounded-full ${mode === 'view' ? 'bg-black text-white' : 'text-gray-500'}`}

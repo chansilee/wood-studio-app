@@ -43,7 +43,7 @@ export function JournalPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    load()
+    supabase.rpc('resolve_matured_wait_logs').then(() => load())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
 
@@ -64,7 +64,9 @@ export function JournalPage() {
 
     const productIds = Array.from(new Set(rows.map((r) => r.product_id)))
     const memberIds = Array.from(
-      new Set([...rows.map((r) => r.member_id), ...rows.map((r) => r.edited_by).filter((x): x is string => !!x)])
+      new Set(
+        [...rows.map((r) => r.member_id), ...rows.map((r) => r.edited_by)].filter((x): x is string => !!x)
+      )
     )
     const logIds = rows.map((r) => r.id)
 
@@ -104,7 +106,7 @@ export function JournalPage() {
         product_name: productMap[r.product_id] ?? '?',
         action_label: nodeMap[r.action_node_id] ?? '?',
         input_label: nodeMap[r.input_tag_id] ?? '?',
-        member_name: memberMap[r.member_id] ?? '?',
+        member_name: r.member_id ? (memberMap[r.member_id] ?? '?') : '系統自動',
         outputs: (outputs ?? [])
           .filter((o) => o.log_id === r.id)
           .map((o) => ({ tagId: o.output_tag_id, label: nodeMap[o.output_tag_id] ?? '?', qty: o.qty })),
@@ -144,7 +146,7 @@ export function JournalPage() {
     <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h1 className="text-xl font-semibold">日誌系統</h1>
-        <div className="flex items-center gap-0.5 border rounded-full p-0.5 bg-gray-50">
+        <div className="flex items-center gap-0.5 border rounded-full p-0.5 bg-gray-50 ml-auto">
           <button
             onClick={() => setTab('browse')}
             className={`text-xs px-3 py-1 rounded-full ${tab === 'browse' ? 'bg-black text-white' : 'text-gray-500'}`}

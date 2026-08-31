@@ -11,7 +11,7 @@ interface DiffPlan {
   productId: string
   productName: string
   reuseCount: number
-  newNodes: { id: string; kind: NodeRow['kind']; label: string; pos_x: number; pos_y: number; product_id: string }[]
+  newNodes: { id: string; kind: NodeRow['kind']; label: string; pos_x: number; pos_y: number; wait_days: number | null; product_id: string }[]
   newEdges: { id: string; from_node_id: string; to_node_id: string; product_id: string; sort_order: number }[]
   ambiguous: string[]
 }
@@ -48,7 +48,7 @@ function computeDiff(
     } else if (matches.length === 0) {
       const freshId = crypto.randomUUID()
       idMap.set(tn.id, freshId)
-      newNodes.push({ id: freshId, kind: tn.kind, label: tn.label, pos_x: tn.pos_x, pos_y: tn.pos_y, product_id: productId })
+      newNodes.push({ id: freshId, kind: tn.kind, label: tn.label, pos_x: tn.pos_x, pos_y: tn.pos_y, wait_days: tn.wait_days, product_id: productId })
     } else {
       ambiguous.push(tn.label)
     }

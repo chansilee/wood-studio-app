@@ -93,7 +93,7 @@ export function ProductsPage() {
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <h1 className="text-xl font-semibold">產品參考</h1>
         {isOwner && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <button
               onClick={() => setAdding((v) => !v)}
               className="bg-black text-white rounded px-4 py-1.5 text-sm"

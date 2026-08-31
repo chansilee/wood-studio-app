@@ -140,6 +140,7 @@ export function InventoryOverviewPage() {
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [lockedByOtherName, setLockedByOtherName] = useState<string | null>(null)
+  const [hasResumableDraft, setHasResumableDraft] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -183,7 +184,8 @@ export function InventoryOverviewPage() {
   }
 
   useEffect(() => {
-    load()
+    supabase.rpc('resolve_matured_wait_logs').then(() => load())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -258,11 +260,18 @@ export function InventoryOverviewPage() {
       : rawRootFolders
 
   useEffect(() => {
-    if (!editing) {
+    if (editing) return
+    const checkLock = () => {
       fetchInventoryLock().then((lock) => {
         setLockedByOtherName(lock.lockedBy && !lock.isExpired && lock.lockedBy !== profile?.id ? lock.lockedByName ?? '負責人' : null)
+        setHasResumableDraft(!!(lock.lockedBy && !lock.isExpired && lock.lockedBy === profile?.id))
       })
     }
+    checkLock()
+    // re-check periodically so the button label falls back to "開啟盤點修正"
+    // on its own once the 15-minute idle window lapses, without needing a reload
+    const interval = setInterval(checkLock, 60000)
+    return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, profile?.id])
 
@@ -421,13 +430,13 @@ export function InventoryOverviewPage() {
         <h1 className="text-xl font-semibold">總數瀏覽</h1>
         {isOwner && !editing && (
           <button onClick={openEditMode} className="bg-red-600 text-white rounded px-4 py-1.5 text-sm hover:bg-red-700">
-            開啟盤點修正
+            {hasResumableDraft ? '繼續盤點修正' : '開啟盤點修正'}
           </button>
         )}
       </div>
 
-      <div className="flex gap-4">
-        <div className="w-56 flex-shrink-0 border rounded-lg p-2 self-stretch overflow-y-auto">
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="w-full md:w-56 flex-shrink-0 border rounded-lg p-2 max-h-64 md:max-h-none md:self-stretch overflow-y-auto">
           <div
             onClick={() => setSelectedFolderId(null)}
             className={`flex items-center gap-1 pr-2 py-1 rounded text-sm cursor-pointer ${selectedFolderId === null ? 'bg-blue-100 text-blue-800' : 'hover:bg-gray-100'}`}

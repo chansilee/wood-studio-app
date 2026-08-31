@@ -39,6 +39,7 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
   const [lockMessage, setLockMessage] = useState<string | null>(null)
 
   useEffect(() => {
+    supabase.rpc('resolve_matured_wait_logs')
     supabase
       .from('products')
       .select('*')
@@ -117,11 +118,19 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
   }
 
   const findNode = (id: string) => nodes.find((n) => n.id === id)
+  // 等待節點 are fully automatic — a human should never be able to pick one
+  // as an action, so every action-option list here excludes them
   const actionsFrom = (tagId: string) =>
-    edges.filter((e) => e.from_node_id === tagId).map((e) => findNode(e.to_node_id)).filter(Boolean) as NodeRow[]
+    (edges.filter((e) => e.from_node_id === tagId).map((e) => findNode(e.to_node_id)).filter(Boolean) as NodeRow[]).filter(
+      (n) => n.wait_days == null
+    )
   const outputsOf = (actionId: string) =>
     edges.filter((e) => e.from_node_id === actionId).map((e) => findNode(e.to_node_id)).filter(Boolean) as NodeRow[]
   const isContinuing = (tagId: string) => edges.some((e) => e.from_node_id === tagId)
+  // a tag whose only path forward is an automatic wait node should never be
+  // offered as something to manually log into — it drains on its own
+  const feedsOnlyWaitNode = (tagId: string) =>
+    edges.some((e) => e.from_node_id === tagId && findNode(e.to_node_id)?.wait_days != null)
 
   const availableFor = (stepIdx: number, tagId: string): number | null => {
     if (stepIdx === 0) {
@@ -135,9 +144,10 @@ export function ProductionLogForm({ onLogged }: { onLogged?: () => void }) {
   }
 
   const rawInputOptionsFor = (idx: number): NodeRow[] =>
-    idx === 0
+    (idx === 0
       ? nodes.filter((n) => n.kind === 'tag')
       : (steps[idx - 1]?.outputs.filter((o) => isContinuing(o.tagId)).map((o) => findNode(o.tagId)).filter(Boolean) as NodeRow[])
+    ).filter((n) => !feedsOnlyWaitNode(n.id))
 
   const inputOptionsFor = (idx: number): NodeRow[] => {
     var raw = rawInputOptionsFor(idx)

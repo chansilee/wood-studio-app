@@ -16,7 +16,7 @@ export type ProcessFlowScope = { type: 'product'; id: string } | { type: 'templa
 
 export function ProcessFlowEditor({
   scope,
-  editable,
+  editable: editableProp,
   onChanged,
   toolbarExtra,
 }: {
@@ -25,6 +25,23 @@ export function ProcessFlowEditor({
   onChanged?: () => void
   toolbarExtra?: ReactNode
 }) {
+  // the pointer-drag/connect/right-click editing model here needs a real
+  // mouse (or equivalent fine pointer) — on a touch-only device (phone,
+  // tablet with no attached mouse) force view-only regardless of the
+  // caller's `editable` prop, and swap the canvas back to normal touch
+  // scrolling so the whole diagram can still be panned around
+  const [hasFinePointer, setHasFinePointer] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: fine)')
+    const handler = () => setHasFinePointer(mq.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  const editable = editableProp && hasFinePointer
+  const editBlockedByDevice = editableProp && !hasFinePointer
+
   const [nodes, setNodes] = useState<NodeRow[]>([])
   const [edges, setEdges] = useState<EdgeRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,6 +50,8 @@ export function ProcessFlowEditor({
   const connectRef = useRef<{ fromId: string; fromIsAction: boolean } | null>(null)
   const [connectLine, setConnectLine] = useState<{ fx: number; fy: number; tx: number; ty: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [nodeContextMenu, setNodeContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
 
   const scopeCol = scope.type === 'product' ? 'product_id' : 'template_id'
   const scopeFields = { product_id: null as string | null, template_id: null as string | null, [scopeCol]: scope.id }
@@ -46,6 +65,10 @@ export function ProcessFlowEditor({
   // mode) — used as a fallback anchor so lines never rely on the fixed-pixel
   // formula for a pill whose real width varies with its content
   const tagPillRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  // action/wait cards have no explicit height — it grows with however many
+  // output rows exist — so their real rendered size is measured too, rather
+  // than trusting the actionHeight() formula's estimate for anchor points
+  const actionCardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const [, forceTick] = useState(0)
 
   useEffect(() => {
@@ -63,8 +86,10 @@ export function ProcessFlowEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges, editable])
 
-  const load = async () => {
-    setLoading(true)
+  // shared by the initial load AND any mid-session silent refetch — kept
+  // separate from the setLoading(true/false) wrapper below so a refetch
+  // never unmounts the canvas (which would reset its scroll position)
+  const fetchAndApply = async () => {
     const [{ data: nodeRows }, { data: edgeRows }] = await Promise.all([
       supabase.from('process_nodes').select('*').eq(scopeCol, scope.id),
       supabase.from('process_edges').select('*').eq(scopeCol, scope.id).order('sort_order'),
@@ -85,6 +110,11 @@ export function ProcessFlowEditor({
     }
     setNodes(finalNodes)
     setEdges(edgeRows ?? [])
+  }
+
+  const load = async () => {
+    setLoading(true)
+    await fetchAndApply()
     setLoading(false)
   }
 
@@ -95,14 +125,13 @@ export function ProcessFlowEditor({
   const outEdgesOfAction = (id: string) => edges.filter((e) => e.from_node_id === id).sort((a, b) => a.sort_order - b.sort_order)
   const tagHasOutgoing = (id: string) => edges.some((e) => e.from_node_id === id)
 
+  // wait nodes carry an extra "（系統自動）" line that needs more room
+  const actionWidth = (n: NodeRow) => (n.wait_days != null ? ACT_W * 1.1 : ACT_W)
+
   const actionHeight = (n: NodeRow) => {
     const outs = outEdgesOfAction(n.id).length
     return ACT_H_BASE + 28 + Math.max(outs, 1) * 24 + 4
   }
-
-  const actionInPos = (n: NodeRow) => ({ x: n.pos_x, y: n.pos_y + 26 })
-  const tagOutPortPos = (n: NodeRow) => ({ x: n.pos_x + 84, y: n.pos_y + 16 })
-  const tagInPos = (n: NodeRow) => ({ x: n.pos_x, y: n.pos_y + 16 })
 
   // Measures an anchor element's actual on-canvas position rather than
   // guessing it from a row-index formula — accurate regardless of label
@@ -115,15 +144,137 @@ export function ProcessFlowEditor({
     return { x: er.left - cr.left + er.width / 2, y: er.top - cr.top + er.height / 2 }
   }
 
-  // fallback anchor for a tag's outgoing edge when its connect-port isn't
-  // rendered (view mode) — the pill itself is always present, so use its
-  // real right edge rather than a fixed offset that assumed the port's width
-  const measuredRightEdge = (el: HTMLElement | undefined): { x: number; y: number } | null => {
+  // Directional edge routing: a tag's rounded outline is split into 8
+  // compass points — the upper-left arc (W/NW/N/NE) serves incoming edges,
+  // the lower-right arc (E/SE/S/SW) serves outgoing ones — and whichever
+  // line is actually being drawn picks whichever of its 4 candidates points
+  // most directly at the other end, instead of always using a fixed side.
+  type Compass = 'W' | 'NW' | 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW'
+  const COMPASS_ANGLE: Record<Compass, number> = { E: 0, SE: 45, S: 90, SW: 135, W: 180, NW: 225, N: 270, NE: 315 }
+  // unit vector each side faces outward — used to make a connector actually
+  // leave/arrive along that side instead of a curve that's horizontal no
+  // matter which port it's attached to
+  const COMPASS_VECTOR: Record<Compass, { x: number; y: number }> = {
+    E: { x: 1, y: 0 },
+    SE: { x: Math.SQRT1_2, y: Math.SQRT1_2 },
+    S: { x: 0, y: 1 },
+    SW: { x: -Math.SQRT1_2, y: Math.SQRT1_2 },
+    W: { x: -1, y: 0 },
+    NW: { x: -Math.SQRT1_2, y: -Math.SQRT1_2 },
+    N: { x: 0, y: -1 },
+    NE: { x: Math.SQRT1_2, y: -Math.SQRT1_2 },
+  }
+  const TAG_INPUT_CANDIDATES: Compass[] = ['W', 'NW', 'N', 'NE']
+  const TAG_OUTPUT_CANDIDATES: Compass[] = ['E', 'SE', 'S', 'SW']
+
+  // `preferred` (the straight-across side — W for an input, E for an output)
+  // wins outright whenever the two nodes are within 45° of level with each
+  // other, rather than the plain nearest-of-4 rule tipping into a diagonal
+  // as soon as the angle passes the diagonal's own halfway point (22.5°) —
+  // a nearly-flat connection should still read as a flat line.
+  const nearestCompass = (dx: number, dy: number, candidates: Compass[], preferred?: Compass): Compass => {
+    let deg = (Math.atan2(dy, dx) * 180) / Math.PI
+    if (deg < 0) deg += 360
+    if (preferred) {
+      let pDiff = Math.abs(COMPASS_ANGLE[preferred] - deg)
+      if (pDiff > 180) pDiff = 360 - pDiff
+      if (pDiff <= 45) return preferred
+    }
+    let best = candidates[0]
+    let bestDiff = Infinity
+    for (const c of candidates) {
+      let diff = Math.abs(COMPASS_ANGLE[c] - deg)
+      if (diff > 180) diff = 360 - diff
+      if (diff < bestDiff) {
+        bestDiff = diff
+        best = c
+      }
+    }
+    return best
+  }
+
+  // measured when the pill is on screen (it always renders, even in view
+  // mode), falling back to a formula guess only before the DOM has committed
+  const tagAnchorPoints = (n: NodeRow) => {
     const canvas = canvasRef.current
-    if (!el || !canvas) return null
-    const er = el.getBoundingClientRect()
-    const cr = canvas.getBoundingClientRect()
-    return { x: er.right - cr.left, y: er.top - cr.top + er.height / 2 }
+    const el = tagPillRefs.current.get(n.id)
+    let left: number, top: number, right: number, bottom: number
+    if (el && canvas) {
+      const er = el.getBoundingClientRect()
+      const cr = canvas.getBoundingClientRect()
+      left = er.left - cr.left
+      top = er.top - cr.top
+      right = er.right - cr.left
+      bottom = er.bottom - cr.top
+    } else {
+      left = n.pos_x
+      top = n.pos_y
+      right = n.pos_x + 84
+      bottom = n.pos_y + 32
+    }
+    const midX = (left + right) / 2
+    const midY = (top + bottom) / 2
+    // the pill is a stadium shape (rounded-full): N/S/E/W sit exactly on its
+    // flat edges/tips, but a bounding-box corner (e.g. plain `left,top` for
+    // NW) falls in the rounded cap's cut-off corner, outside the actual
+    // outline — the diagonals instead need a point measured on the cap's own
+    // circular arc, radius = half the pill's height, at 45°
+    const r = (bottom - top) / 2
+    const k = r * Math.SQRT1_2
+    const leftCapX = left + r
+    const rightCapX = right - r
+    const points: Record<Compass, { x: number; y: number }> = {
+      W: { x: left, y: midY },
+      NW: { x: leftCapX - k, y: midY - k },
+      N: { x: midX, y: top },
+      NE: { x: rightCapX + k, y: midY - k },
+      E: { x: right, y: midY },
+      SE: { x: rightCapX + k, y: midY + k },
+      S: { x: midX, y: bottom },
+      SW: { x: leftCapX - k, y: midY + k },
+    }
+    return { points, center: { x: midX, y: midY } }
+  }
+
+  // action/wait cards have no fixed height (it grows with however many
+  // output rows are listed) — measure the real rendered box rather than
+  // trusting actionHeight()'s estimate, which drifted once more content
+  // (like the wait-days line) changed the card's real height
+  const actionRect = (n: NodeRow): { width: number; height: number } => {
+    const canvas = canvasRef.current
+    const el = actionCardRefs.current.get(n.id)
+    if (el && canvas) {
+      const er = el.getBoundingClientRect()
+      return { width: er.width, height: er.height }
+    }
+    return { width: actionWidth(n), height: actionHeight(n) }
+  }
+
+  const actionCenter = (n: NodeRow) => {
+    const r = actionRect(n)
+    return { x: n.pos_x + r.width / 2, y: n.pos_y + r.height / 2 }
+  }
+
+  // action/wait nodes only ever get an input port on 3 sides — N/S when the
+  // source tag sits clearly above/below, W otherwise (the normal left-to-right case)
+  const actionInputAnchorPoints = (n: NodeRow): Record<'N' | 'W' | 'S', { x: number; y: number }> => {
+    const r = actionRect(n)
+    return {
+      N: { x: n.pos_x + r.width / 2, y: n.pos_y },
+      W: { x: n.pos_x, y: n.pos_y + 26 },
+      S: { x: n.pos_x + r.width / 2, y: n.pos_y + r.height },
+    }
+  }
+
+  // was previously "N/S whenever the source tag's y falls outside the
+  // action's own (often short) vertical span" — with rows/lanes spaced much
+  // further apart than a card's height, that tipped to N/S for almost any
+  // multi-row layout. Switched to the same angle-based rule as the tag
+  // side: W wins whenever the two boxes are within 45° of level, which
+  // actually accounts for how far apart they are horizontally too.
+  const actionInputDirection = (source: { x: number; y: number }, action: NodeRow): 'N' | 'W' | 'S' => {
+    const ref = actionCenter(action)
+    return nearestCompass(source.x - ref.x, source.y - ref.y, ['N', 'W', 'S'], 'W') as 'N' | 'W' | 'S'
   }
 
   const edgeEndpoints = (e: EdgeRow) => {
@@ -131,23 +282,45 @@ export function ProcessFlowEditor({
     const to = findNode(e.to_node_id)
     if (!from || !to) return null
     if (from.kind === 'action') {
+      // action -> tag: the action's own output-row dot stays fixed, only the
+      // tag's landing side is chosen directionally
       const idx = outEdgesOfAction(from.id).findIndex((x) => x.id === e.id)
-      const fallback = { x: from.pos_x + ACT_W, y: from.pos_y + ACT_H_BASE + 28 + idx * 24 + 12 }
+      const fallback = { x: from.pos_x + actionWidth(from), y: from.pos_y + ACT_H_BASE + 28 + idx * 24 + 12 }
       const p1 = measuredPos(outputDotRefs.current.get(e.id)) ?? fallback
-      const p2 = tagInPos(to)
-      return { fx: p1.x, fy: p1.y, tx: p2.x, ty: p2.y }
+      const tagAnchors = tagAnchorPoints(to)
+      // decide direction from the action's overall box position, not this
+      // specific output row's dot — a row stacked further down a tall
+      // multi-output card sits well below the tag even when the two boxes
+      // are roughly level, which wrongly tipped this into N/S
+      const fromRef = actionCenter(from)
+      const dir = nearestCompass(fromRef.x - tagAnchors.center.x, fromRef.y - tagAnchors.center.y, TAG_INPUT_CANDIDATES, 'W')
+      const p2 = tagAnchors.points[dir]
+      return { fx: p1.x, fy: p1.y, tx: p2.x, ty: p2.y, fromDir: 'E' as Compass, toDir: dir }
     }
-    const p3 =
-      measuredPos(tagPortRefs.current.get(from.id)) ??
-      measuredRightEdge(tagPillRefs.current.get(from.id)) ??
-      tagOutPortPos(from)
-    const p4 = actionInPos(to)
-    return { fx: p3.x, fy: p3.y, tx: p4.x, ty: p4.y }
+    // tag -> action: both ends are chosen directionally
+    const tagAnchors = tagAnchorPoints(from)
+    const targetCenter = actionCenter(to)
+    const outDir = nearestCompass(targetCenter.x - tagAnchors.center.x, targetCenter.y - tagAnchors.center.y, TAG_OUTPUT_CANDIDATES, 'E')
+    const p3 = tagAnchors.points[outDir]
+    const inDir = actionInputDirection(tagAnchors.center, to)
+    const p4 = actionInputAnchorPoints(to)[inDir]
+    return { fx: p3.x, fy: p3.y, tx: p4.x, ty: p4.y, fromDir: outDir, toDir: inDir as Compass }
   }
 
-  const pathFor = (p: { fx: number; fy: number; tx: number; ty: number }) => {
-    const midX = (p.fx + p.tx) / 2
-    return `M ${p.fx} ${p.fy} C ${midX} ${p.fy}, ${midX} ${p.ty}, ${p.tx} ${p.ty}`
+  // the curve's control points are pulled out along each end's own compass
+  // direction, so it actually departs/arrives along that side (and the
+  // arrow, which auto-orients to the path's tangent, points the right way)
+  // instead of the old fixed left-to-right S-curve.
+  const pathFor = (p: { fx: number; fy: number; tx: number; ty: number; fromDir?: Compass; toDir?: Compass }) => {
+    const fv = COMPASS_VECTOR[p.fromDir ?? 'E']
+    const tv = COMPASS_VECTOR[p.toDir ?? 'W']
+    const dist = Math.hypot(p.tx - p.fx, p.ty - p.fy)
+    const offset = Math.max(24, Math.min(dist * 0.5, 70))
+    const c1x = p.fx + fv.x * offset
+    const c1y = p.fy + fv.y * offset
+    const c2x = p.tx + tv.x * offset
+    const c2y = p.ty + tv.y * offset
+    return `M ${p.fx} ${p.fy} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p.tx} ${p.ty}`
   }
 
   const persistPos = async (id: string, x: number, y: number) => {
@@ -177,9 +350,13 @@ export function ProcessFlowEditor({
   const onPointerMove = (ev: React.PointerEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect()
     if (dragRef.current) {
+      // capture the id now — dragRef.current can be nulled by onPointerUp
+      // before this functional update actually runs, and re-reading the
+      // (by-then-null) ref inside the updater crashed the whole page
+      const id = dragRef.current.id
       const x = Math.max(0, ev.clientX - rect.left - dragRef.current.offX)
       const y = Math.max(0, Math.min(rect.height - 30, ev.clientY - rect.top - dragRef.current.offY))
-      setNodes((prev) => prev.map((n) => (n.id === dragRef.current!.id ? { ...n, pos_x: x, pos_y: y } : n)))
+      setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, pos_x: x, pos_y: y } : n)))
     } else if (connectRef.current) {
       setConnectLine((prev) => (prev ? { ...prev, tx: ev.clientX - rect.left, ty: ev.clientY - rect.top } : prev))
     }
@@ -210,7 +387,7 @@ export function ProcessFlowEditor({
           if (!dup) await addEdge(fromId, targetTag.id)
         } else {
           const overAction = nodes.find(
-            (n) => n.kind === 'action' && x >= n.pos_x && x <= n.pos_x + ACT_W && y >= n.pos_y && y <= n.pos_y + actionHeight(n)
+            (n) => n.kind === 'action' && x >= n.pos_x && x <= n.pos_x + actionWidth(n) && y >= n.pos_y && y <= n.pos_y + actionHeight(n)
           )
           if (!overAction) {
             const tagId = newId()
@@ -220,7 +397,7 @@ export function ProcessFlowEditor({
         }
       } else {
         const targetAction = nodes.find(
-          (n) => n.kind === 'action' && x >= n.pos_x && x <= n.pos_x + ACT_W && y >= n.pos_y && y <= n.pos_y + actionHeight(n)
+          (n) => n.kind === 'action' && x >= n.pos_x && x <= n.pos_x + actionWidth(n) && y >= n.pos_y && y <= n.pos_y + actionHeight(n)
         )
         if (targetAction) {
           const dup = edges.some((e) => e.from_node_id === fromId && e.to_node_id === targetAction.id)
@@ -239,20 +416,35 @@ export function ProcessFlowEditor({
     }
   }
 
-  const addNode = async (n: { id: string; kind: 'action' | 'tag'; label: string; pos_x: number; pos_y: number }) => {
-    setNodes((prev) => [...prev, { ...n, ...scopeFields, created_at: new Date().toISOString() }])
+  const addNode = async (n: { id: string; kind: 'action' | 'tag'; label: string; pos_x: number; pos_y: number; wait_days?: number }) => {
+    setNodes((prev) => [...prev, { ...n, wait_days: n.wait_days ?? null, ...scopeFields, created_at: new Date().toISOString() }])
     await supabase.from('process_nodes').insert({ ...n, ...scopeFields })
   }
 
+  const mapEdgeError = (message: string) =>
+    message.includes('wait node can only have one output edge')
+      ? '等待節點只能有一個輸出，請先移除原本的輸出連線再重新連接'
+      : message.includes('production log history')
+        ? '原本的連線已經有生產紀錄，無法自動切換，請先確認舊路徑沒有相關生產紀錄'
+        : message
+
   const addEdge = async (fromNodeId: string, toNodeId: string) => {
+    setError(null)
     const id = newId()
     const siblingOrders = edges.filter((e) => e.from_node_id === fromNodeId).map((e) => e.sort_order)
     const sortOrder = siblingOrders.length > 0 ? Math.max(...siblingOrders) + 1 : 0
-    setEdges((prev) => [
-      ...prev,
-      { id, ...scopeFields, from_node_id: fromNodeId, to_node_id: toNodeId, sort_order: sortOrder, created_at: new Date().toISOString() },
-    ])
-    await supabase.from('process_edges').insert({ id, ...scopeFields, from_node_id: fromNodeId, to_node_id: toNodeId, sort_order: sortOrder })
+    const { error: insErr } = await supabase
+      .from('process_edges')
+      .insert({ id, ...scopeFields, from_node_id: fromNodeId, to_node_id: toNodeId, sort_order: sortOrder })
+    if (insErr) {
+      setError(mapEdgeError(insErr.message))
+      return
+    }
+    // the exclusivity trigger may have silently dropped older sibling edges
+    // on the server — refetch rather than trust the optimistic local diff
+    // (silently: load() would flip loading and unmount the canvas, resetting
+    // its scroll position back to the top-left every time)
+    await fetchAndApply()
   }
 
   // swap this output edge with its neighbor above/below in the action's
@@ -311,11 +503,48 @@ export function ProcessFlowEditor({
     await supabase.from('process_nodes').update({ label: clean }).eq('id', id)
   }
 
-  const addAction = () => {
-    addNode({ id: newId(), kind: 'action', label: '新動作', pos_x: 40, pos_y: 40 })
+  const addAction = (pos?: { x: number; y: number }) => {
+    addNode({ id: newId(), kind: 'action', label: '新動作', pos_x: pos?.x ?? 40, pos_y: pos?.y ?? 40 })
   }
-  const addTag = () => {
-    addNode({ id: newId(), kind: 'tag', label: '新狀態', pos_x: 40, pos_y: 400 })
+  const addTag = (pos?: { x: number; y: number }) => {
+    addNode({ id: newId(), kind: 'tag', label: '新狀態', pos_x: pos?.x ?? 40, pos_y: pos?.y ?? 400 })
+  }
+  const addWaitNode = (pos?: { x: number; y: number }) => {
+    addNode({ id: newId(), kind: 'action', label: '等待乾燥', pos_x: pos?.x ?? 40, pos_y: pos?.y ?? 220, wait_days: 1 })
+  }
+
+  // "複製這個節點" for action/wait nodes — a fresh, unconnected copy so
+  // sharing a wait_days setting across several tag pairs doesn't require
+  // retyping it (see the decision to keep wait nodes strictly one-in/one-out
+  // rather than a shared multi-slot node)
+  const uniqueDuplicateLabel = (baseLabel: string): string => {
+    const existing = new Set(nodes.map((n) => n.label))
+    let i = 1
+    let candidate = `${baseLabel}_${i}`
+    while (existing.has(candidate)) {
+      i++
+      candidate = `${baseLabel}_${i}`
+    }
+    return candidate
+  }
+
+  const duplicateNode = (id: string) => {
+    const n = findNode(id)
+    if (!n || n.kind !== 'action') return
+    addNode({
+      id: newId(),
+      kind: 'action',
+      label: uniqueDuplicateLabel(n.label),
+      pos_x: n.pos_x + 30,
+      pos_y: n.pos_y + 30,
+      wait_days: n.wait_days ?? undefined,
+    })
+  }
+
+  const updateWaitDays = async (id: string, days: number) => {
+    const clean = Number.isFinite(days) && days > 0 ? days : 1
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, wait_days: clean } : n)))
+    await supabase.from('process_nodes').update({ wait_days: clean }).eq('id', id)
   }
 
   const clearCanvas = async () => {
@@ -367,18 +596,18 @@ export function ProcessFlowEditor({
 
   return (
     <div>
+      {editBlockedByDevice && (
+        <p className="text-red-600 text-sm mb-2 font-medium">
+          偵測裝置並未有滑鼠支持精確輸入，暫時停止編輯功能
+        </p>
+      )}
       {editable && (
         <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex gap-2">
-            <button onClick={addAction} className="border rounded px-3 py-1.5 text-sm hover:bg-gray-50">
-              ＋ 新增動作站
-            </button>
-            <button onClick={addTag} className="border rounded px-3 py-1.5 text-sm hover:bg-gray-50">
-              ＋ 新增標籤
-            </button>
+          <div className="flex items-center gap-2">
             <button onClick={clearCanvas} className="border rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
               清空畫布
             </button>
+            <span className="text-xs text-gray-400">在畫布上按右鍵可新增節點</span>
           </div>
           {toolbarExtra}
         </div>
@@ -395,10 +624,24 @@ export function ProcessFlowEditor({
             backgroundColor: '#FBFAF6',
             backgroundImage: 'radial-gradient(#E7E2D3 1px, transparent 1px)',
             backgroundSize: '22px 22px',
-            touchAction: 'none',
+            // 'none' is required while actually dragging nodes/connections
+            // with a mouse; on a touch-only device (view-only here) it must
+            // stay 'auto' or the browser's native pan/scroll gestures break
+            touchAction: editable ? 'none' : 'auto',
           }}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
+          onClick={() => {
+            setContextMenu(null)
+            setNodeContextMenu(null)
+          }}
+          onContextMenu={(ev) => {
+            if (!editable) return
+            ev.preventDefault()
+            const rect = canvasRef.current!.getBoundingClientRect()
+            setNodeContextMenu(null)
+            setContextMenu({ x: ev.clientX - rect.left, y: ev.clientY - rect.top })
+          }}
         >
           <svg className="absolute inset-0 pointer-events-none" width={2150} height={560}>
             <defs>
@@ -444,11 +687,29 @@ export function ProcessFlowEditor({
             return (
               <div
                 key={n.id}
+                ref={(el) => {
+                  if (el) actionCardRefs.current.set(n.id, el)
+                  else actionCardRefs.current.delete(n.id)
+                }}
                 className="absolute bg-white border rounded-lg px-2.5 pt-2 pb-2"
-                style={{ left: n.pos_x, top: n.pos_y, width: ACT_W, borderColor: '#C2BAA2', cursor: editable ? 'grab' : 'default' }}
+                style={{
+                  left: n.pos_x,
+                  top: n.pos_y,
+                  width: actionWidth(n),
+                  borderColor: n.wait_days != null ? '#3E6FA8' : '#C2BAA2',
+                  cursor: editable ? 'grab' : 'default',
+                }}
                 onPointerDown={(ev) => {
-                  if ((ev.target as HTMLElement).closest('.pfe-port,button,[contenteditable]')) return
+                  if ((ev.target as HTMLElement).closest('.pfe-port,button,[contenteditable],input')) return
                   startDrag(ev, n.id)
+                }}
+                onContextMenu={(ev) => {
+                  if (!editable) return
+                  ev.preventDefault()
+                  ev.stopPropagation()
+                  const rect = canvasRef.current!.getBoundingClientRect()
+                  setContextMenu(null)
+                  setNodeContextMenu({ nodeId: n.id, x: ev.clientX - rect.left, y: ev.clientY - rect.top })
                 }}
               >
                 <div className="flex items-start justify-between gap-1.5">
@@ -467,6 +728,25 @@ export function ProcessFlowEditor({
                     </button>
                   )}
                 </div>
+                {n.wait_days != null && (
+                  <div className="flex items-center gap-1 mt-1 text-[11px]" style={{ color: '#3E6FA8' }}>
+                    <span>⏳ 等待</span>
+                    {editable ? (
+                      <input
+                        type="number"
+                        min={0.5}
+                        step={0.5}
+                        defaultValue={n.wait_days}
+                        onBlur={(ev) => updateWaitDays(n.id, Number(ev.target.value))}
+                        className="w-14 border rounded px-1 py-0 text-[11px]"
+                        style={{ borderColor: '#3E6FA8' }}
+                      />
+                    ) : (
+                      <span>{n.wait_days}</span>
+                    )}
+                    <span>天</span>
+                  </div>
+                )}
                 <div className="flex flex-col gap-1 mt-1.5">
                   {outs.map((e, idx) => {
                     const t = findNode(e.to_node_id)
@@ -514,7 +794,7 @@ export function ProcessFlowEditor({
                     )
                   })}
                 </div>
-                {editable && (
+                {editable && !(n.wait_days != null && outs.length >= 1) && (
                   <div className="flex items-center gap-1.5 mt-1.5">
                     <span className="text-[10.5px] text-amber-700 flex-1" style={{ fontFamily: 'ui-monospace, monospace' }}>
                       ＋ 輸出狀態
@@ -591,6 +871,60 @@ export function ProcessFlowEditor({
               </div>
             )
           })}
+
+          {contextMenu && (
+            <div
+              className="absolute bg-white border rounded-lg shadow-lg py-1 text-sm z-10"
+              style={{ left: contextMenu.x, top: contextMenu.y, borderColor: '#C2BAA2', minWidth: 140 }}
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              <button
+                onClick={() => {
+                  addAction(contextMenu)
+                  setContextMenu(null)
+                }}
+                className="block w-full text-left px-3 py-1.5 hover:bg-gray-50"
+              >
+                ＋ 新增動作站
+              </button>
+              <button
+                onClick={() => {
+                  addTag(contextMenu)
+                  setContextMenu(null)
+                }}
+                className="block w-full text-left px-3 py-1.5 hover:bg-gray-50"
+              >
+                ＋ 新增標籤
+              </button>
+              <button
+                onClick={() => {
+                  addWaitNode(contextMenu)
+                  setContextMenu(null)
+                }}
+                className="block w-full text-left px-3 py-1.5 hover:bg-gray-50"
+              >
+                ＋ 新增等待節點
+              </button>
+            </div>
+          )}
+
+          {nodeContextMenu && (
+            <div
+              className="absolute bg-white border rounded-lg shadow-lg py-1 text-sm z-10"
+              style={{ left: nodeContextMenu.x, top: nodeContextMenu.y, borderColor: '#C2BAA2', minWidth: 140 }}
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              <button
+                onClick={() => {
+                  duplicateNode(nodeContextMenu.nodeId)
+                  setNodeContextMenu(null)
+                }}
+                className="block w-full text-left px-3 py-1.5 hover:bg-gray-50"
+              >
+                複製這個節點
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
