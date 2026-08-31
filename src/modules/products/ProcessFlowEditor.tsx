@@ -708,8 +708,27 @@ export function ProcessFlowEditor({
     return true
   }
 
+  // once any product has applied this template, its flow is treated like a
+  // shared reference — wiping/renaming the flow underneath them would leave
+  // those products' "套用過的範本" provenance pointing at something
+  // unrecognizable. 分類虛線框 are exempt on purpose: they're meant to be
+  // freely re-drawn and re-synced (see 套用分類到多個產品), unlike the flow
+  // itself which products can only ever additively diff against.
+  const templateHasApplications = async (): Promise<boolean> => {
+    if (scope.type !== 'template') return false
+    const { count } = await supabase
+      .from('product_template_applications')
+      .select('id', { count: 'exact', head: true })
+      .eq('template_id', scope.id)
+    return (count ?? 0) > 0
+  }
+
   const clearAllCanvas = async () => {
     setError(null)
+    if (await templateHasApplications()) {
+      window.alert('此範本已有產品套用，禁止清空全部畫布！')
+      return
+    }
     if (!(await checkFlowClearGuard())) return
     if (!window.confirm('確定要清空全部畫布嗎？流程與分類虛線框都會被清空，只留下「開始」，此動作無法復原。')) return
     if (!(await deleteFlowNodes())) return
@@ -719,6 +738,10 @@ export function ProcessFlowEditor({
 
   const clearFlowOnly = async () => {
     setError(null)
+    if (await templateHasApplications()) {
+      window.alert('此範本已有產品套用，禁止清空流程畫布！')
+      return
+    }
     if (!(await checkFlowClearGuard())) return
     if (!window.confirm('確定要清空畫布的流程部分嗎？除了「開始」以外的節點都會被刪除（分類虛線框不受影響），此動作無法復原。')) return
     if (!(await deleteFlowNodes())) return

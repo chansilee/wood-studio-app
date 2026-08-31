@@ -49,6 +49,14 @@ export function ProcessTemplateDetailPage() {
 
   const removeTemplate = async () => {
     if (!id) return
+    const { count } = await supabase
+      .from('product_template_applications')
+      .select('id', { count: 'exact', head: true })
+      .eq('template_id', id)
+    if ((count ?? 0) > 0) {
+      window.alert('此範本已有產品套用，禁止刪除！')
+      return
+    }
     if (!window.confirm(`確定要刪除範本「${template?.name}」嗎？此動作無法復原。`)) return
     const { error } = await supabase.from('process_templates').delete().eq('id', id)
     if (error) {
