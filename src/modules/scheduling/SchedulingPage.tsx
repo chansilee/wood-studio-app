@@ -13,7 +13,7 @@ export function SchedulingPage() {
   const { profile } = useAuth()
   const isOwner = profile?.role === 'owner'
   const [ownerTab, setOwnerTab] = useState<Tab>('edit')
-  const [memberTab, setMemberTab] = useState<Tab>('preference')
+  const [memberTab, setMemberTab] = useState<Tab>('browse')
   const tab = isOwner ? ownerTab : memberTab
   const setTab = isOwner ? setOwnerTab : setMemberTab
   const effectiveTab = tab

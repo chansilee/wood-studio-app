@@ -17,6 +17,22 @@ export function productMatchesFolder(product: Product, folderName: string, price
   return false
 }
 
+// root-down-to-folderId, e.g. [null, 大頭柴id, 第一彈id] — used to seed
+// back/forward history when resuming at a remembered folder after a
+// remount, so ← still has the ancestor trail to walk back through instead
+// of looking like this is the very first navigation
+function ancestorChain(folderId: string | null, all: ProductFolder[]): (string | null)[] {
+  const chain: (string | null)[] = []
+  let walk = folderId
+  while (walk) {
+    chain.unshift(walk)
+    const f = all.find((x) => x.id === walk)
+    walk = f ? f.parent_id : null
+  }
+  chain.unshift(null)
+  return chain
+}
+
 function collectDescendantIds(folderId: string, all: ProductFolder[]): Set<string> {
   const ids = new Set<string>()
   const queue = [folderId]
@@ -129,6 +145,13 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
           setCurrentFolderId(null)
           setHistoryStack([null])
           setHistoryIndex(0)
+        } else {
+          // resuming at a remembered folder (or root) after a fresh mount —
+          // seed history with its real ancestor chain rather than a bare
+          // single entry, so ← has something to go back through immediately
+          const chain = ancestorChain(currentFolderId, loaded)
+          setHistoryStack(chain)
+          setHistoryIndex(chain.length - 1)
         }
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,18 +275,16 @@ export function ProductFolderBrowser({ products, prices }: { products: Product[]
         <button
           onClick={goBack}
           disabled={historyIndex === 0}
-          title="上一頁"
-          className="w-7 h-7 flex items-center justify-center rounded border text-sm text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-gray-100"
+          className="flex items-center gap-1 px-2 h-7 rounded border text-sm text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-gray-100"
         >
-          ←
+          ← 回上一層
         </button>
         <button
           onClick={goForward}
           disabled={historyIndex >= historyStack.length - 1}
-          title="下一頁"
-          className="w-7 h-7 flex items-center justify-center rounded border text-sm text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-gray-100"
+          className="flex items-center gap-1 px-2 h-7 rounded border text-sm text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-gray-100"
         >
-          →
+          到下一層 →
         </button>
       </div>
 

@@ -14,6 +14,7 @@ export function ProcessTemplateDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [unlocked, setUnlocked] = useState(false)
+  const [showSortHelp, setShowSortHelp] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -145,9 +146,33 @@ export function ProcessTemplateDetailPage() {
         className="text-xl font-semibold border-none outline-none bg-transparent w-full mb-4"
       />
 
-      <p className="text-xs text-gray-500 mb-3">
-        編輯此範本不會影響已套用過的產品；產品套用時會複製一份獨立的流程。
-      </p>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <p className="text-xs text-gray-500">編輯此範本不會影響已套用過的產品；產品套用時會複製一份獨立的流程。</p>
+        <button onClick={() => setShowSortHelp(true)} className="text-xs text-blue-700 underline whitespace-nowrap">
+          視圖怎麼影響排序？
+        </button>
+      </div>
+
+      {showSortHelp && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowSortHelp(false)}>
+          <div className="bg-white rounded-lg p-5 max-w-md w-full text-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-medium">視圖怎麼影響排序？</h3>
+              <button onClick={() => setShowSortHelp(false)} className="text-gray-400 hover:text-black text-lg leading-none">
+                ✕
+              </button>
+            </div>
+            <div className="space-y-3 text-gray-700 leading-relaxed">
+              <p>在這生產流程內的[標籤] 代表每一個生產的[中間/終點狀態]，每個[標籤]都會有一個數量停留。</p>
+              <p>為了在[總數瀏覽]方便使用者切分類觀看，使用者可以拉出[分類虛線框]包圍多個標籤加以命名。</p>
+              <p>在[總數瀏覽]下，即會出現該[分類標籤]checkbox，譬如："成品"類別(SKUs必須使用), "前段工序"類別(包含上色以前的工序)等等...</p>
+              <p>勾選即可觀看該類別下的所有標籤。</p>
+              <p>被包含的標籤，在序列上怎麼顯示？是依照由上而下，再由左而右的方式列舉。</p>
+              <p>所以，大致上將想看的[標籤]及[分類虛線框]，由上而下進行安排，即是最終在[總數瀏覽]看到的排序。</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!unlocked && (
         <div className="border border-red-200 bg-red-50 rounded-lg p-3 mb-2">

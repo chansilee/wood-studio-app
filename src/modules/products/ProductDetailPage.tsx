@@ -436,7 +436,7 @@ export function ProductDetailPage() {
           </span>
         </div>
       )}
-      {appliedTemplates.length > 0 && (
+      {isOwner && appliedTemplates.length > 0 && (
         <div className="text-xs text-gray-400 mb-2">
           <span>套用過的範本：</span>
           {appliedTemplates.map((a, i) => {
