@@ -4,6 +4,7 @@ import type { Tables } from '@/shared/types/database'
 
 type NodeRow = Tables<'process_nodes'>
 type EdgeRow = Tables<'process_edges'>
+type CategoryBoxRow = Tables<'category_boxes'>
 
 const ACT_W = 132
 const ACT_H_BASE = 44
@@ -44,10 +45,13 @@ export function ProcessFlowEditor({
 
   const [nodes, setNodes] = useState<NodeRow[]>([])
   const [edges, setEdges] = useState<EdgeRow[]>([])
+  const [categoryBoxes, setCategoryBoxes] = useState<CategoryBoxRow[]>([])
   const [loading, setLoading] = useState(true)
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ id: string; offX: number; offY: number } | null>(null)
   const connectRef = useRef<{ fromId: string; fromIsAction: boolean } | null>(null)
+  const boxDragRef = useRef<{ id: string; offX: number; offY: number } | null>(null)
+  const boxResizeRef = useRef<{ id: string; corner: 'nw' | 'ne' | 'sw' | 'se' } | null>(null)
   const [connectLine, setConnectLine] = useState<{ fx: number; fy: number; tx: number; ty: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -90,10 +94,12 @@ export function ProcessFlowEditor({
   // separate from the setLoading(true/false) wrapper below so a refetch
   // never unmounts the canvas (which would reset its scroll position)
   const fetchAndApply = async () => {
-    const [{ data: nodeRows }, { data: edgeRows }] = await Promise.all([
+    const [{ data: nodeRows }, { data: edgeRows }, { data: boxRows }] = await Promise.all([
       supabase.from('process_nodes').select('*').eq(scopeCol, scope.id),
       supabase.from('process_edges').select('*').eq(scopeCol, scope.id).order('sort_order'),
+      supabase.from('category_boxes').select('*').eq(scopeCol, scope.id),
     ])
+    setCategoryBoxes(boxRows ?? [])
     let finalNodes = nodeRows ?? []
     // "開始" is a magic label the production-log validation trigger treats as
     // the unlimited source tag — every graph needs exactly one, so seed it
@@ -335,6 +341,21 @@ export function ProcessFlowEditor({
     ev.preventDefault()
   }
 
+  const startBoxDrag = (ev: React.PointerEvent, box: CategoryBoxRow) => {
+    if (!editable) return
+    ev.stopPropagation()
+    const rect = canvasRef.current!.getBoundingClientRect()
+    boxDragRef.current = { id: box.id, offX: ev.clientX - rect.left - box.pos_x, offY: ev.clientY - rect.top - box.pos_y }
+    ev.preventDefault()
+  }
+
+  const startBoxResize = (ev: React.PointerEvent, box: CategoryBoxRow, corner: 'nw' | 'ne' | 'sw' | 'se') => {
+    if (!editable) return
+    ev.stopPropagation()
+    boxResizeRef.current = { id: box.id, corner }
+    ev.preventDefault()
+  }
+
   const startConnect = (ev: React.PointerEvent, fromId: string, fromIsAction: boolean) => {
     if (!editable) return
     ev.stopPropagation()
@@ -357,6 +378,44 @@ export function ProcessFlowEditor({
       const x = Math.max(0, ev.clientX - rect.left - dragRef.current.offX)
       const y = Math.max(0, Math.min(rect.height - 30, ev.clientY - rect.top - dragRef.current.offY))
       setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, pos_x: x, pos_y: y } : n)))
+    } else if (boxDragRef.current) {
+      const id = boxDragRef.current.id
+      const x = Math.max(0, ev.clientX - rect.left - boxDragRef.current.offX)
+      const y = Math.max(0, ev.clientY - rect.top - boxDragRef.current.offY)
+      setCategoryBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, pos_x: x, pos_y: y } : b)))
+    } else if (boxResizeRef.current) {
+      // re-derive the fixed opposite edge from current state each frame
+      // (rather than a frozen start snapshot) — self-consistent because
+      // every previous frame already preserved that same opposite edge
+      const { id, corner } = boxResizeRef.current
+      const MIN = 60
+      const mx = ev.clientX - rect.left
+      const my = ev.clientY - rect.top
+      setCategoryBoxes((prev) =>
+        prev.map((b) => {
+          if (b.id !== id) return b
+          const right = b.pos_x + b.width
+          const bottom = b.pos_y + b.height
+          let left = b.pos_x
+          let top = b.pos_y
+          let newRight = right
+          let newBottom = bottom
+          if (corner === 'nw') {
+            left = Math.min(mx, right - MIN)
+            top = Math.min(my, bottom - MIN)
+          } else if (corner === 'ne') {
+            newRight = Math.max(mx, left + MIN)
+            top = Math.min(my, bottom - MIN)
+          } else if (corner === 'sw') {
+            left = Math.min(mx, right - MIN)
+            newBottom = Math.max(my, top + MIN)
+          } else {
+            newRight = Math.max(mx, left + MIN)
+            newBottom = Math.max(my, top + MIN)
+          }
+          return { ...b, pos_x: left, pos_y: top, width: newRight - left, height: newBottom - top }
+        })
+      )
     } else if (connectRef.current) {
       setConnectLine((prev) => (prev ? { ...prev, tx: ev.clientX - rect.left, ty: ev.clientY - rect.top } : prev))
     }
@@ -368,6 +427,14 @@ export function ProcessFlowEditor({
       const n = findNode(id)
       dragRef.current = null
       if (n) await persistPos(id, n.pos_x, n.pos_y)
+      return
+    }
+    if (boxDragRef.current || boxResizeRef.current) {
+      const id = (boxDragRef.current ?? boxResizeRef.current)!.id
+      boxDragRef.current = null
+      boxResizeRef.current = null
+      const b = categoryBoxes.find((x) => x.id === id)
+      if (b) await persistBoxRect(id, { pos_x: b.pos_x, pos_y: b.pos_y, width: b.width, height: b.height })
       return
     }
     if (connectRef.current) {
@@ -417,7 +484,10 @@ export function ProcessFlowEditor({
   }
 
   const addNode = async (n: { id: string; kind: 'action' | 'tag'; label: string; pos_x: number; pos_y: number; wait_days?: number }) => {
-    setNodes((prev) => [...prev, { ...n, wait_days: n.wait_days ?? null, ...scopeFields, created_at: new Date().toISOString() }])
+    setNodes((prev) => [
+      ...prev,
+      { ...n, wait_days: n.wait_days ?? null, category: null, ...scopeFields, created_at: new Date().toISOString() },
+    ])
     await supabase.from('process_nodes').insert({ ...n, ...scopeFields })
   }
 
@@ -547,23 +617,61 @@ export function ProcessFlowEditor({
     await supabase.from('process_nodes').update({ wait_days: clean }).eq('id', id)
   }
 
-  const clearCanvas = async () => {
-    setError(null)
-    if (scope.type === 'product') {
-      const [{ count: logCount }, { count: adjustmentCount }] = await Promise.all([
-        supabase.from('production_logs').select('id', { count: 'exact', head: true }).eq('product_id', scope.id),
-        supabase.from('stock_adjustments').select('id', { count: 'exact', head: true }).eq('product_id', scope.id),
-      ])
-      if ((logCount ?? 0) > 0) {
-        window.alert('這個產品已經有生產紀錄，無法清空流程。')
-        return
-      }
-      if ((adjustmentCount ?? 0) > 0) {
-        window.alert('這個產品還有校正紀錄，無法清空流程。')
-        return
-      }
+  // 分類虛線框: a draggable/resizable dashed rectangle — whichever tags'
+  // positions fall inside it belong to its named category. Deliberately
+  // spatial rather than a per-node field, so re-drawing a box never touches
+  // (and is never blocked by) the production-log-history protection on
+  // process_nodes/process_edges.
+  const addCategoryBox = async (pos?: { x: number; y: number }) => {
+    const box = {
+      id: newId(),
+      name: '新分類',
+      pos_x: pos?.x ?? 40,
+      pos_y: pos?.y ?? 40,
+      width: 260,
+      height: 180,
+      ...scopeFields,
     }
-    if (!window.confirm('確定要清空畫布嗎？除了「開始」以外的節點都會被刪除，此動作無法復原。')) return
+    setCategoryBoxes((prev) => [...prev, { ...box, created_at: new Date().toISOString() }])
+    await supabase.from('category_boxes').insert(box)
+  }
+
+  const renameCategoryBox = async (id: string, name: string) => {
+    const clean = name.trim() || '新分類'
+    setCategoryBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, name: clean } : b)))
+    await supabase.from('category_boxes').update({ name: clean }).eq('id', id)
+  }
+
+  const persistBoxRect = async (id: string, rect: { pos_x: number; pos_y: number; width: number; height: number }) => {
+    await supabase.from('category_boxes').update(rect).eq('id', id)
+  }
+
+  const removeCategoryBox = async (id: string) => {
+    setCategoryBoxes((prev) => prev.filter((b) => b.id !== id))
+    await supabase.from('category_boxes').delete().eq('id', id)
+  }
+
+  // shared by both "清空全部畫布" and "清空畫布-流程部分" — the flow half is
+  // still gated by production-log/校正紀錄 history like before; the category
+  // half below never is, since 分類虛線框 don't reference logged data at all
+  const checkFlowClearGuard = async (): Promise<boolean> => {
+    if (scope.type !== 'product') return true
+    const [{ count: logCount }, { count: adjustmentCount }] = await Promise.all([
+      supabase.from('production_logs').select('id', { count: 'exact', head: true }).eq('product_id', scope.id),
+      supabase.from('stock_adjustments').select('id', { count: 'exact', head: true }).eq('product_id', scope.id),
+    ])
+    if ((logCount ?? 0) > 0) {
+      window.alert('這個產品已經有生產紀錄，無法清空流程。')
+      return false
+    }
+    if ((adjustmentCount ?? 0) > 0) {
+      window.alert('這個產品還有校正紀錄，無法清空流程。')
+      return false
+    }
+    return true
+  }
+
+  const deleteFlowNodes = async (): Promise<boolean> => {
     const startNode = nodes.find((n) => n.kind === 'tag' && n.label === '開始')
     const idsToDelete = nodes.filter((n) => n.id !== startNode?.id).map((n) => n.id)
     if (idsToDelete.length > 0) {
@@ -576,7 +684,7 @@ export function ProcessFlowEditor({
             ? '清空失敗：這個流程裡有節點已經有生產紀錄，無法清空'
             : '清空失敗：' + error.message
         )
-        return
+        return false
       }
     }
     if (scope.type === 'product') {
@@ -586,7 +694,42 @@ export function ProcessFlowEditor({
     }
     setNodes((prev) => prev.filter((n) => n.id === startNode?.id))
     setEdges([])
+    return true
+  }
+
+  const deleteAllCategoryBoxes = async (): Promise<boolean> => {
+    if (categoryBoxes.length === 0) return true
+    const { error } = await supabase.from('category_boxes').delete().eq(scopeCol, scope.id)
+    if (error) {
+      setError('清空分類失敗：' + error.message)
+      return false
+    }
+    setCategoryBoxes([])
+    return true
+  }
+
+  const clearAllCanvas = async () => {
+    setError(null)
+    if (!(await checkFlowClearGuard())) return
+    if (!window.confirm('確定要清空全部畫布嗎？流程與分類虛線框都會被清空，只留下「開始」，此動作無法復原。')) return
+    if (!(await deleteFlowNodes())) return
+    await deleteAllCategoryBoxes()
     onChanged?.()
+  }
+
+  const clearFlowOnly = async () => {
+    setError(null)
+    if (!(await checkFlowClearGuard())) return
+    if (!window.confirm('確定要清空畫布的流程部分嗎？除了「開始」以外的節點都會被刪除（分類虛線框不受影響），此動作無法復原。')) return
+    if (!(await deleteFlowNodes())) return
+    onChanged?.()
+  }
+
+  const clearCategoriesOnly = async () => {
+    setError(null)
+    if (categoryBoxes.length === 0) return
+    if (!window.confirm('確定要清空所有分類虛線框嗎？流程節點不受影響，此動作無法復原。')) return
+    await deleteAllCategoryBoxes()
   }
 
   if (loading) return <div className="text-sm text-gray-500">載入中…</div>
@@ -603,9 +746,15 @@ export function ProcessFlowEditor({
       )}
       {editable && (
         <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2">
-            <button onClick={clearCanvas} className="border rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
-              清空畫布
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={clearAllCanvas} className="border rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+              清空全部畫布
+            </button>
+            <button onClick={clearFlowOnly} className="border rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+              清空畫布－流程部分
+            </button>
+            <button onClick={clearCategoriesOnly} className="border rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+              清空畫布－分類部分
             </button>
             <span className="text-xs text-gray-400">在畫布上按右鍵可新增節點</span>
           </div>
@@ -681,6 +830,84 @@ export function ProcessFlowEditor({
               <path d={pathFor(connectLine)} fill="none" stroke="#A79E8B" strokeWidth={2} strokeDasharray="3 3" />
             )}
           </svg>
+
+          {categoryBoxes.map((b) => (
+            <div
+              key={b.id}
+              className="absolute border-2 border-dashed rounded-md"
+              style={{ left: b.pos_x, top: b.pos_y, width: b.width, height: b.height, borderColor: '#9CA3AF', pointerEvents: 'none' }}
+            >
+              <div
+                className="absolute bg-white px-1.5 text-[11px] text-gray-500 whitespace-nowrap"
+                style={{ top: -10, left: '50%', transform: 'translateX(-50%)', pointerEvents: editable ? 'auto' : 'none' }}
+              >
+                {editable ? (
+                  <span
+                    contentEditable
+                    suppressContentEditableWarning
+                    onBlur={(ev) => renameCategoryBox(b.id, ev.currentTarget.innerText)}
+                    className="outline-none"
+                  >
+                    {b.name}
+                  </span>
+                ) : (
+                  b.name
+                )}
+              </div>
+
+              {editable && (
+                <>
+                  <div
+                    className="absolute inset-x-2 top-0 h-2 cursor-move"
+                    style={{ pointerEvents: 'auto' }}
+                    onPointerDown={(ev) => startBoxDrag(ev, b)}
+                  />
+                  <div
+                    className="absolute inset-x-2 bottom-0 h-2 cursor-move"
+                    style={{ pointerEvents: 'auto' }}
+                    onPointerDown={(ev) => startBoxDrag(ev, b)}
+                  />
+                  <div
+                    className="absolute inset-y-2 left-0 w-2 cursor-move"
+                    style={{ pointerEvents: 'auto' }}
+                    onPointerDown={(ev) => startBoxDrag(ev, b)}
+                  />
+                  <div
+                    className="absolute inset-y-2 right-0 w-2 cursor-move"
+                    style={{ pointerEvents: 'auto' }}
+                    onPointerDown={(ev) => startBoxDrag(ev, b)}
+                  />
+                  <div
+                    className="absolute w-3 h-3 bg-white border-2 rounded-sm cursor-nwse-resize"
+                    style={{ left: -6, top: -6, borderColor: '#9CA3AF', pointerEvents: 'auto' }}
+                    onPointerDown={(ev) => startBoxResize(ev, b, 'nw')}
+                  />
+                  <div
+                    className="absolute w-3 h-3 bg-white border-2 rounded-sm cursor-nesw-resize"
+                    style={{ right: -6, top: -6, borderColor: '#9CA3AF', pointerEvents: 'auto' }}
+                    onPointerDown={(ev) => startBoxResize(ev, b, 'ne')}
+                  />
+                  <div
+                    className="absolute w-3 h-3 bg-white border-2 rounded-sm cursor-nesw-resize"
+                    style={{ left: -6, bottom: -6, borderColor: '#9CA3AF', pointerEvents: 'auto' }}
+                    onPointerDown={(ev) => startBoxResize(ev, b, 'sw')}
+                  />
+                  <div
+                    className="absolute w-3 h-3 bg-white border-2 rounded-sm cursor-nwse-resize"
+                    style={{ right: -6, bottom: -6, borderColor: '#9CA3AF', pointerEvents: 'auto' }}
+                    onPointerDown={(ev) => startBoxResize(ev, b, 'se')}
+                  />
+                  <button
+                    onClick={() => removeCategoryBox(b.id)}
+                    className="absolute w-4 h-4 rounded-full bg-white border text-[10px] text-gray-400 hover:text-red-600 flex items-center justify-center"
+                    style={{ top: -10, right: -10, pointerEvents: 'auto' }}
+                  >
+                    ✕
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
 
           {actionNodes.map((n) => {
             const outs = outEdgesOfAction(n.id)
@@ -814,60 +1041,59 @@ export function ProcessFlowEditor({
             const terminal = !tagHasOutgoing(n.id)
             const isStart = n.label === '開始'
             return (
-              <div
-                key={n.id}
-                ref={(el) => {
-                  if (el) tagPillRefs.current.set(n.id, el)
-                  else tagPillRefs.current.delete(n.id)
-                }}
-                className="absolute rounded-full border-[1.5px] px-2.5 py-1.5 flex items-center gap-1.5"
-                style={{
-                  left: n.pos_x,
-                  top: n.pos_y,
-                  borderColor: isStart ? '#3C6E62' : terminal ? '#B0532E' : '#A9791E',
-                  background: isStart ? '#E3EDE8' : terminal ? '#F4E4DC' : '#F1E6C9',
-                  cursor: editable ? 'grab' : 'default',
-                }}
-                onPointerDown={(ev) => {
-                  if ((ev.target as HTMLElement).closest('.pfe-port,button,[contenteditable]')) return
-                  startDrag(ev, n.id)
-                }}
-              >
+              <div key={n.id} className="absolute" style={{ left: n.pos_x, top: n.pos_y }}>
                 <div
-                  contentEditable={editable && !isStart}
-                  suppressContentEditableWarning
-                  onBlur={(ev) => renameNode(n.id, ev.currentTarget.innerText)}
-                  className="text-xs outline-none whitespace-nowrap"
-                  style={{ color: isStart ? '#3C6E62' : terminal ? '#B0532E' : '#A9791E', fontFamily: 'ui-monospace, monospace' }}
+                  ref={(el) => {
+                    if (el) tagPillRefs.current.set(n.id, el)
+                    else tagPillRefs.current.delete(n.id)
+                  }}
+                  className="rounded-full border-[1.5px] px-2.5 py-1.5 flex items-center gap-1.5"
+                  style={{
+                    borderColor: isStart ? '#3C6E62' : terminal ? '#B0532E' : '#A9791E',
+                    background: isStart ? '#E3EDE8' : terminal ? '#F4E4DC' : '#F1E6C9',
+                    cursor: editable ? 'grab' : 'default',
+                  }}
+                  onPointerDown={(ev) => {
+                    if ((ev.target as HTMLElement).closest('.pfe-port,button,[contenteditable]')) return
+                    startDrag(ev, n.id)
+                  }}
                 >
-                  {n.label}
+                  <div
+                    contentEditable={editable && !isStart}
+                    suppressContentEditableWarning
+                    onBlur={(ev) => renameNode(n.id, ev.currentTarget.innerText)}
+                    className="text-xs outline-none whitespace-nowrap"
+                    style={{ color: isStart ? '#3C6E62' : terminal ? '#B0532E' : '#A9791E', fontFamily: 'ui-monospace, monospace' }}
+                  >
+                    {n.label}
+                  </div>
+                  {editable && (
+                    <>
+                      <span
+                        ref={(el) => {
+                          if (el) tagPortRefs.current.set(n.id, el)
+                          else tagPortRefs.current.delete(n.id)
+                        }}
+                        className="pfe-port w-2.5 h-2.5 rounded-full border-2 flex-shrink-0"
+                        style={{ borderColor: '#3C6E62', background: '#E3EDE8', cursor: 'crosshair' }}
+                        onPointerDown={(ev) => startConnect(ev, n.id, false)}
+                      />
+                      {isStart ? (
+                        <span className="text-xs opacity-55" style={{ color: '#3C6E62' }} title="固定起點，無法刪除">
+                          🔒
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => removeNode(n.id)}
+                          className="text-xs opacity-55 hover:opacity-100"
+                          style={{ color: terminal ? '#B0532E' : '#A9791E' }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
-                {editable && (
-                  <>
-                    <span
-                      ref={(el) => {
-                        if (el) tagPortRefs.current.set(n.id, el)
-                        else tagPortRefs.current.delete(n.id)
-                      }}
-                      className="pfe-port w-2.5 h-2.5 rounded-full border-2 flex-shrink-0"
-                      style={{ borderColor: '#3C6E62', background: '#E3EDE8', cursor: 'crosshair' }}
-                      onPointerDown={(ev) => startConnect(ev, n.id, false)}
-                    />
-                    {isStart ? (
-                      <span className="text-xs opacity-55" style={{ color: '#3C6E62' }} title="固定起點，無法刪除">
-                        🔒
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => removeNode(n.id)}
-                        className="text-xs opacity-55 hover:opacity-100"
-                        style={{ color: terminal ? '#B0532E' : '#A9791E' }}
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </>
-                )}
               </div>
             )
           })}
@@ -904,6 +1130,15 @@ export function ProcessFlowEditor({
                 className="block w-full text-left px-3 py-1.5 hover:bg-gray-50"
               >
                 ＋ 新增等待節點
+              </button>
+              <button
+                onClick={() => {
+                  addCategoryBox(contextMenu)
+                  setContextMenu(null)
+                }}
+                className="block w-full text-left px-3 py-1.5 hover:bg-gray-50"
+              >
+                ＋ 新增分類虛線框
               </button>
             </div>
           )}

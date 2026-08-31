@@ -37,6 +37,7 @@ export function ProductDetailPage() {
   const [appliedTemplates, setAppliedTemplates] = useState<TemplateApplication[]>([])
   const [currentTemplateNames, setCurrentTemplateNames] = useState<Record<string, string>>({})
   const [currentPrice, setCurrentPrice] = useState<number | null>(null)
+  const [skus, setSkus] = useState<string[]>([])
 
   const load = async () => {
     if (!id) return
@@ -72,12 +73,30 @@ export function ProductDetailPage() {
 
   const loadBalances = async () => {
     if (!id) return
-    const [{ data: nodeRows }, { data: balRows }] = await Promise.all([
-      supabase.from('process_nodes').select('id, label').eq('product_id', id).eq('kind', 'tag'),
+    const [{ data: nodeRows }, { data: balRows }, { data: boxRows }] = await Promise.all([
+      supabase.from('process_nodes').select('id, label, pos_x, pos_y').eq('product_id', id).eq('kind', 'tag'),
       supabase.from('tag_balances').select('tag_id, available_qty').eq('product_id', id),
+      supabase.from('category_boxes').select('name, pos_x, pos_y, width, height').eq('product_id', id),
     ])
     const balMap = Object.fromEntries((balRows ?? []).map((b) => [b.tag_id, b.available_qty ?? 0]))
     setBalances((nodeRows ?? []).map((n) => ({ tag_id: n.id, label: n.label, available_qty: balMap[n.id] ?? 0 })))
+    // SKUs are entirely derived from the process flow: any tag whose
+    // position falls inside a 分類虛線框 named 成品 shows up here
+    // automatically, no manual entry
+    const boxes = boxRows ?? []
+    const skuLabels = new Set<string>()
+    for (const n of nodeRows ?? []) {
+      const inSkuBox = boxes.some(
+        (b) =>
+          b.name === '成品' &&
+          n.pos_x >= b.pos_x &&
+          n.pos_x <= b.pos_x + b.width &&
+          n.pos_y >= b.pos_y &&
+          n.pos_y <= b.pos_y + b.height
+      )
+      if (inSkuBox) skuLabels.add(n.label)
+    }
+    setSkus(Array.from(skuLabels))
   }
 
   useEffect(() => {
@@ -277,7 +296,17 @@ export function ProductDetailPage() {
 
       <div className="mb-6">
         <h1 className="text-xl font-semibold mb-1">{product.name}</h1>
-        <p className="text-sm text-gray-500">目前價格：{currentPrice !== null ? `$${currentPrice}` : '尚未設定'}</p>
+        <p className="text-sm text-gray-500 mb-1">目前價格：{currentPrice !== null ? `$${currentPrice}` : '尚未設定'}</p>
+        {skus.length > 0 && (
+          <div className="flex items-center flex-wrap gap-1.5 mt-1">
+            <span className="text-xs text-gray-500">SKUs：</span>
+            {skus.map((s) => (
+              <span key={s} className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
+                {s}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4 mb-6">

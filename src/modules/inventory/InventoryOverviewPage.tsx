@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
@@ -14,7 +14,9 @@ import type { Tables } from '@/shared/types/database'
 
 type Product = Tables<'products'>
 type ProductFolder = Tables<'product_folders'>
-type TagRow = { id: string; product_id: string; label: string }
+type TagRow = { id: string; product_id: string; label: string; pos_x: number; pos_y: number }
+type CategoryBoxRow = { product_id: string; name: string; pos_x: number; pos_y: number; width: number; height: number }
+const UNCATEGORIZED = '未分類'
 
 function cellKey(productId: string, tagId: string): string {
   return `${productId}::${tagId}`
@@ -122,10 +124,12 @@ export function InventoryOverviewPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [tagsByProduct, setTagsByProduct] = useState<Record<string, TagRow[]>>({})
+  const [categoryBoxesByProduct, setCategoryBoxesByProduct] = useState<Record<string, CategoryBoxRow[]>>({})
   const [balances, setBalances] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [filterText, setFilterText] = useState('')
   const [columnFilterText, setColumnFilterText] = useState('')
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set())
   const [folders, setFolders] = useState<ProductFolder[]>([])
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set())
@@ -158,21 +162,34 @@ export function InventoryOverviewPage() {
     const productIds = prods.map((p) => p.id)
     if (productIds.length === 0) {
       setTagsByProduct({})
+      setCategoryBoxesByProduct({})
       setBalances({})
       setLoading(false)
       return
     }
-    const [{ data: tagNodes }, { data: balanceRows }] = await Promise.all([
-      supabase.from('process_nodes').select('id, product_id, label').eq('kind', 'tag').neq('label', '開始').in('product_id', productIds),
+    const [{ data: tagNodes }, { data: balanceRows }, { data: boxRows }] = await Promise.all([
+      supabase
+        .from('process_nodes')
+        .select('id, product_id, label, pos_x, pos_y')
+        .eq('kind', 'tag')
+        .neq('label', '開始')
+        .in('product_id', productIds),
       supabase.from('tag_balances').select('product_id, tag_id, available_qty').in('product_id', productIds),
+      supabase.from('category_boxes').select('product_id, name, pos_x, pos_y, width, height').in('product_id', productIds),
     ])
     const grouped: Record<string, TagRow[]> = {}
     for (const n of tagNodes ?? []) {
       if (!n.product_id) continue
-      const row: TagRow = { id: n.id, product_id: n.product_id, label: n.label }
+      const row: TagRow = { id: n.id, product_id: n.product_id, label: n.label, pos_x: n.pos_x, pos_y: n.pos_y }
       ;(grouped[n.product_id] ??= []).push(row)
     }
     setTagsByProduct(grouped)
+    const groupedBoxes: Record<string, CategoryBoxRow[]> = {}
+    for (const b of boxRows ?? []) {
+      if (!b.product_id) continue
+      ;(groupedBoxes[b.product_id] ??= []).push(b as CategoryBoxRow)
+    }
+    setCategoryBoxesByProduct(groupedBoxes)
     setBalances(
       Object.fromEntries(
         (balanceRows ?? [])
@@ -289,20 +306,91 @@ export function InventoryOverviewPage() {
     .split(/[,，]/)
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean)
-  const columnLabels = Array.from(
+  // every distinct tag label among the filtered products (respects 水平篩選
+  // text but NOT the category checkboxes below) — this stays the source of
+  // truth for which cells get tracked while editing, so hiding a category's
+  // columns never drops its draft values
+  const allLabels = Array.from(
     new Set(filteredProducts.flatMap((p) => (tagsByProduct[p.id] ?? []).map((t) => t.label)))
-  )
-    .filter((label) => columnFilterTerms.length === 0 || columnFilterTerms.some((t) => label.toLowerCase().includes(t)))
-    .sort((a, b) => a.localeCompare(b, 'zh-Hant'))
+  ).filter((label) => columnFilterTerms.length === 0 || columnFilterTerms.some((t) => label.toLowerCase().includes(t)))
 
   const tagFor = (productId: string, label: string) => (tagsByProduct[productId] ?? []).find((t) => t.label === label)
 
+  // membership is spatial, not a stored field: a tag belongs to a 分類虛線框
+  // whenever its position falls inside that box's bounds. A tag can fall
+  // inside several boxes (kept as a Set so the same-named box never counts
+  // twice) and a label can therefore legitimately appear under more than one
+  // category group.
+  const categoriesForTag = (productId: string, tag: TagRow): Set<string> => {
+    const boxes = categoryBoxesByProduct[productId] ?? []
+    const cats = new Set<string>()
+    for (const b of boxes) {
+      if (tag.pos_x >= b.pos_x && tag.pos_x <= b.pos_x + b.width && tag.pos_y >= b.pos_y && tag.pos_y <= b.pos_y + b.height) {
+        cats.add(b.name)
+      }
+    }
+    return cats
+  }
+
+  const categoriesForLabel = (label: string): Set<string> => {
+    const cats = new Set<string>()
+    for (const p of filteredProducts) {
+      const t = tagFor(p.id, label)
+      if (!t) continue
+      for (const c of categoriesForTag(p.id, t)) cats.add(c)
+    }
+    if (cats.size === 0) cats.add(UNCATEGORIZED)
+    return cats
+  }
+
+  const categoriesInOrder = Array.from(new Set(allLabels.flatMap((l) => Array.from(categoriesForLabel(l))))).sort((a, b) =>
+    a === UNCATEGORIZED ? 1 : b === UNCATEGORIZED ? -1 : a.localeCompare(b, 'zh-Hant')
+  )
+  const columnGroups = categoriesInOrder
+    .filter((c) => !hiddenCategories.has(c))
+    .map((category) => ({
+      category,
+      labels: allLabels.filter((l) => categoriesForLabel(l).has(category)).sort((a, b) => a.localeCompare(b, 'zh-Hant')),
+    }))
+
+  const toggleCategoryVisible = (category: string) => {
+    setHiddenCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }
+
   const baselineFor = (key: string) => balances[key] ?? 0
+
+  // numeric value actually shown in a cell right now, whether or not it's
+  // being edited — used to compute the live subtotal/total rows so they
+  // update as you type instead of only reflecting last-saved numbers
+  const cellValue = (key: string): number => {
+    if (!editing) return baselineFor(key)
+    const n = Number(editValues[key])
+    return Number.isFinite(n) ? n : 0
+  }
+
+  const productCategoryTotal = (productId: string, labels: string[]): number =>
+    labels.reduce((sum, label) => {
+      const tag = tagFor(productId, label)
+      return tag ? sum + cellValue(cellKey(productId, tag.id)) : sum
+    }, 0)
+
+  const columnGrandTotal = (label: string): number =>
+    filteredProducts.reduce((sum, p) => {
+      const tag = tagFor(p.id, label)
+      return tag ? sum + cellValue(cellKey(p.id, tag.id)) : sum
+    }, 0)
+
+  const categoryGrandTotal = (labels: string[]): number => labels.reduce((sum, label) => sum + columnGrandTotal(label), 0)
 
   const startEditingFresh = () => {
     const initial: Record<string, string> = {}
     for (const p of filteredProducts) {
-      for (const label of columnLabels) {
+      for (const label of allLabels) {
         const tag = tagFor(p.id, label)
         if (tag) initial[cellKey(p.id, tag.id)] = String(baselineFor(cellKey(p.id, tag.id)))
       }
@@ -315,7 +403,7 @@ export function InventoryOverviewPage() {
   const startEditingFromDraft = (draft: Record<string, number>, draftReason: string) => {
     const initial: Record<string, string> = {}
     for (const p of filteredProducts) {
-      for (const label of columnLabels) {
+      for (const label of allLabels) {
         const tag = tagFor(p.id, label)
         if (!tag) continue
         const key = cellKey(p.id, tag.id)
@@ -517,61 +605,124 @@ export function InventoryOverviewPage() {
             </div>
           )}
 
-          {columnLabels.length === 0 ? (
+          {allLabels.length === 0 ? (
             <p className="text-sm text-gray-400">沒有符合條件的產品或標籤</p>
           ) : (
-            <div className="border rounded-lg overflow-auto">
-              <table className="text-sm border-collapse w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="text-left px-3 py-2 sticky left-0 bg-gray-50 whitespace-nowrap">產品</th>
-                    {columnLabels.map((label) => (
-                      <th key={label} className="text-right px-3 py-2 whitespace-nowrap" style={{ fontFamily: 'ui-monospace, monospace' }}>
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredProducts.map((p) => (
-                    <tr key={p.id} className="border-b">
-                      <td className="px-3 py-1.5 sticky left-0 bg-white whitespace-nowrap">
-                        <Link to={`/products/${p.id}`} className="text-blue-700 hover:underline">
-                          {p.name}
-                        </Link>
-                      </td>
-                      {columnLabels.map((label) => {
-                        const tag = tagFor(p.id, label)
-                        if (!tag) {
-                          return (
-                            <td key={label} className="px-3 py-1.5 text-right text-gray-300">
-                              －
-                            </td>
-                          )
-                        }
-                        const key = cellKey(p.id, tag.id)
-                        const changed = editing && Number(editValues[key]) !== baselineFor(key)
-                        return (
-                          <td key={label} className={`px-3 py-1.5 text-right ${changed ? 'bg-yellow-100' : ''}`}>
-                            {editing ? (
-                              <input
-                                type="number"
-                                value={editValues[key] ?? ''}
-                                onChange={(e) => handleCellChange(key, e.target.value)}
-                                onBlur={handleCellBlur}
-                                className="w-16 border rounded px-1 py-0.5 text-right text-sm"
-                              />
-                            ) : (
-                              baselineFor(key)
-                            )}
+            <>
+              <div className="flex flex-wrap items-center gap-3 mb-2 text-xs text-gray-600">
+                <span className="text-gray-400">分類篩選：</span>
+                {categoriesInOrder.map((c) => (
+                  <label key={c} className="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" checked={!hiddenCategories.has(c)} onChange={() => toggleCategoryVisible(c)} />
+                    {c}
+                  </label>
+                ))}
+              </div>
+
+              {columnGroups.length === 0 ? (
+                <p className="text-sm text-gray-400">沒有勾選任何分類</p>
+              ) : (
+                <div className="border rounded-lg overflow-auto">
+                  <table className="text-sm border-collapse w-full">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th rowSpan={2} className="text-left px-3 py-2 sticky left-0 bg-gray-50 whitespace-nowrap align-bottom">
+                          產品
+                        </th>
+                        {columnGroups.map((g) => (
+                          <th
+                            key={g.category}
+                            colSpan={g.labels.length + 1}
+                            className="text-center px-3 py-1 border-b border-l text-gray-500 font-medium"
+                          >
+                            {g.category}
+                          </th>
+                        ))}
+                      </tr>
+                      <tr className="bg-gray-50 border-b">
+                        {columnGroups.map((g) => (
+                          <Fragment key={g.category}>
+                            {g.labels.map((label, idx) => (
+                              <th
+                                key={label}
+                                className={`text-right px-3 py-2 whitespace-nowrap ${idx === 0 ? 'border-l' : ''}`}
+                                style={{ fontFamily: 'ui-monospace, monospace' }}
+                              >
+                                {label}
+                              </th>
+                            ))}
+                            <th className="text-right px-3 py-2 whitespace-nowrap text-gray-500 bg-gray-100">{g.category} 合計</th>
+                          </Fragment>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProducts.map((p) => (
+                        <tr key={p.id} className="border-b">
+                          <td className="px-3 py-1.5 sticky left-0 bg-white whitespace-nowrap">
+                            <Link to={`/products/${p.id}`} className="text-blue-700 hover:underline">
+                              {p.name}
+                            </Link>
                           </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          {columnGroups.map((g) => (
+                            <Fragment key={g.category}>
+                              {g.labels.map((label, idx) => {
+                                const tag = tagFor(p.id, label)
+                                if (!tag) {
+                                  return (
+                                    <td key={label} className={`px-3 py-1.5 text-right text-gray-300 ${idx === 0 ? 'border-l' : ''}`}>
+                                      －
+                                    </td>
+                                  )
+                                }
+                                const key = cellKey(p.id, tag.id)
+                                const changed = editing && Number(editValues[key]) !== baselineFor(key)
+                                return (
+                                  <td
+                                    key={label}
+                                    className={`px-3 py-1.5 text-right ${idx === 0 ? 'border-l' : ''} ${changed ? 'bg-yellow-100' : ''}`}
+                                  >
+                                    {editing ? (
+                                      <input
+                                        type="number"
+                                        value={editValues[key] ?? ''}
+                                        onChange={(e) => handleCellChange(key, e.target.value)}
+                                        onBlur={handleCellBlur}
+                                        className="w-16 border rounded px-1 py-0.5 text-right text-sm"
+                                      />
+                                    ) : (
+                                      baselineFor(key)
+                                    )}
+                                  </td>
+                                )
+                              })}
+                              <td className="px-3 py-1.5 text-right text-gray-600 bg-gray-50 font-medium">
+                                {productCategoryTotal(p.id, g.labels)}
+                              </td>
+                            </Fragment>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2">
+                        <td className="px-3 py-1.5 sticky left-0 bg-gray-50 font-medium whitespace-nowrap">總計</td>
+                        {columnGroups.map((g) => (
+                          <Fragment key={g.category}>
+                            {g.labels.map((label, idx) => (
+                              <td key={label} className={`px-3 py-1.5 text-right font-medium bg-gray-50 ${idx === 0 ? 'border-l' : ''}`}>
+                                {columnGrandTotal(label)}
+                              </td>
+                            ))}
+                            <td className="px-3 py-1.5 text-right font-medium bg-gray-100">{categoryGrandTotal(g.labels)}</td>
+                          </Fragment>
+                        ))}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

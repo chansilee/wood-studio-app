@@ -76,6 +76,7 @@ function computeDiff(
 export function ApplyTemplateDiffPanel({ templateId, templateName }: { templateId: string; templateName: string }) {
   const { profile } = useAuth()
   const [open, setOpen] = useState(false)
+  const [openMode, setOpenMode] = useState<'flow' | 'category'>('flow')
   const [products, setProducts] = useState<Product[]>([])
   const [appliedProductIds, setAppliedProductIds] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -84,6 +85,8 @@ export function ApplyTemplateDiffPanel({ templateId, templateName }: { templateI
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [applyingCategories, setApplyingCategories] = useState(false)
+  const [categoryDone, setCategoryDone] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -179,50 +182,132 @@ export function ApplyTemplateDiffPanel({ templateId, templateName }: { templateI
     setPlans(null)
   }
 
+  // Categories have none of the flow's merge/reuse concerns (a box
+  // references nothing else, so there's no id-matching to do) — this is
+  // simply "wipe whatever's there, drop in a fresh copy of the template's
+  // boxes", confirmed up front since it's destructive either way.
+  const applyCategoriesToSelected = async () => {
+    if (selected.size === 0) return
+    if (
+      !window.confirm(
+        `確定要把範本「${templateName}」的分類虛線框套用到已選的 ${selected.size} 個產品嗎？\n這會直接覆蓋這些產品原本的分類設定（無論原本有沒有設定過），此動作無法復原。`
+      )
+    ) {
+      return
+    }
+    setApplyingCategories(true)
+    setError(null)
+    setCategoryDone(false)
+    const { data: tBoxes } = await supabase.from('category_boxes').select('*').eq('template_id', templateId)
+    for (const pid of selected) {
+      const { error: delErr } = await supabase.from('category_boxes').delete().eq('product_id', pid)
+      if (delErr) {
+        setApplyingCategories(false)
+        setError(delErr.message)
+        return
+      }
+      if (tBoxes && tBoxes.length > 0) {
+        const rows = tBoxes.map((b) => ({
+          product_id: pid,
+          name: b.name,
+          pos_x: b.pos_x,
+          pos_y: b.pos_y,
+          width: b.width,
+          height: b.height,
+        }))
+        const { error: insErr } = await supabase.from('category_boxes').insert(rows)
+        if (insErr) {
+          setApplyingCategories(false)
+          setError(insErr.message)
+          return
+        }
+      }
+    }
+    setApplyingCategories(false)
+    setCategoryDone(true)
+  }
+
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="bg-black text-white rounded px-4 py-2 text-sm hover:opacity-90 mt-4">
-        套用差異到多個產品
-      </button>
+      <div className="flex gap-2 mt-4">
+        <button
+          onClick={() => {
+            setOpen(true)
+            setOpenMode('flow')
+          }}
+          className="bg-black text-white rounded px-4 py-2 text-sm hover:opacity-90"
+        >
+          套用流程到多個產品
+        </button>
+        <button
+          onClick={() => {
+            setOpen(true)
+            setOpenMode('category')
+          }}
+          className="border rounded px-4 py-2 text-sm hover:bg-gray-50"
+        >
+          套用分類到多個產品
+        </button>
+      </div>
     )
   }
 
   return (
     <div className="border rounded-lg p-4 mt-4">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="font-medium text-sm">套用差異到多個產品</h3>
-        <button onClick={() => { setOpen(false); setPlans(null); setDone(false); setError(null) }} className="text-xs text-gray-400 hover:text-black">
+        <h3 className="font-medium text-sm">{openMode === 'flow' ? '套用流程到多個產品' : '套用分類到多個產品'}</h3>
+        <button
+          onClick={() => {
+            setOpen(false)
+            setPlans(null)
+            setDone(false)
+            setCategoryDone(false)
+            setError(null)
+          }}
+          className="text-xs text-gray-400 hover:text-black"
+        >
           收起
         </button>
       </div>
       <p className="text-xs text-gray-500 mb-3">
-        用「名稱＋種類」比對每個產品既有的節點：對得上的沿用既有節點（不會重複新增，不會動到既有內容），對不上的才會新增。只會新增、不會刪除或修改，就算產品已經有生產紀錄也可以套用。
+        {openMode === 'flow'
+          ? '用「名稱＋種類」比對每個產品既有的節點：對得上的沿用既有節點（不會重複新增，不會動到既有內容），對不上的才會新增。只會新增、不會刪除或修改，就算產品已經有生產紀錄也可以套用。'
+          : '分類虛線框跟流程節點完全獨立，沒有比對/合併的概念——套用會直接刪掉所選產品原本的所有分類框，換成範本目前的分類框，無論原本有沒有設定過都會被覆蓋。'}
       </p>
 
-      {!plans && (
-        <>
-          <label className="flex items-center gap-2 text-xs text-gray-600 mb-1.5 cursor-pointer">
-            <input type="checkbox" ref={selectAllRef} checked={selected.size === products.length && products.length > 0} onChange={toggleAll} />
-            全選
+      <label className="flex items-center gap-2 text-xs text-gray-600 mb-1.5 cursor-pointer">
+        <input type="checkbox" ref={selectAllRef} checked={selected.size === products.length && products.length > 0} onChange={toggleAll} />
+        全選
+      </label>
+      <div className="max-h-56 overflow-y-auto border rounded mb-3 divide-y">
+        {products.map((p) => (
+          <label key={p.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+            <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
+            <span>{p.name}</span>
+            {appliedProductIds.has(p.id) && <span className="text-[10px] text-gray-400">（已套用過此範本）</span>}
           </label>
-          <div className="max-h-56 overflow-y-auto border rounded mb-3 divide-y">
-            {products.map((p) => (
-              <label key={p.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
-                <span>{p.name}</span>
-                {appliedProductIds.has(p.id) && <span className="text-[10px] text-gray-400">（已套用過此範本）</span>}
-              </label>
-            ))}
-            {products.length === 0 && <p className="px-3 py-2 text-sm text-gray-400">尚無產品</p>}
-          </div>
-          <button
-            onClick={computeDiffs}
-            disabled={selected.size === 0 || computing}
-            className="bg-black text-white rounded px-3 py-1.5 text-sm disabled:opacity-50"
-          >
-            {computing ? '比對中…' : `計算差異（已選 ${selected.size} 項）`}
-          </button>
-        </>
+        ))}
+        {products.length === 0 && <p className="px-3 py-2 text-sm text-gray-400">尚無產品</p>}
+      </div>
+
+      {openMode === 'flow' && !plans && (
+        <button
+          onClick={computeDiffs}
+          disabled={selected.size === 0 || computing}
+          className="bg-black text-white rounded px-3 py-1.5 text-sm disabled:opacity-50"
+        >
+          {computing ? '比對中…' : `計算差異（已選 ${selected.size} 項）`}
+        </button>
+      )}
+
+      {openMode === 'category' && (
+        <button
+          onClick={applyCategoriesToSelected}
+          disabled={selected.size === 0 || applyingCategories}
+          className="bg-red-600 text-white rounded px-3 py-1.5 text-sm disabled:opacity-50 hover:bg-red-700"
+        >
+          {applyingCategories ? '套用中…' : `套用分類（強制覆蓋，已選 ${selected.size} 項）`}
+        </button>
       )}
 
       {plans && (
@@ -261,6 +346,7 @@ export function ApplyTemplateDiffPanel({ templateId, templateName }: { templateI
 
       {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
       {done && <p className="text-green-700 text-sm mt-2">已套用完成</p>}
+      {categoryDone && <p className="text-green-700 text-sm mt-2">分類已套用完成</p>}
     </div>
   )
 }

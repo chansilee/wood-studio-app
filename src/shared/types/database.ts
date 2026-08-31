@@ -77,6 +77,57 @@ export type Database = {
           },
         ]
       }
+      category_boxes: {
+        Row: {
+          created_at: string
+          height: number
+          id: string
+          name: string
+          pos_x: number
+          pos_y: number
+          product_id: string | null
+          template_id: string | null
+          width: number
+        }
+        Insert: {
+          created_at?: string
+          height?: number
+          id?: string
+          name: string
+          pos_x?: number
+          pos_y?: number
+          product_id?: string | null
+          template_id?: string | null
+          width?: number
+        }
+        Update: {
+          created_at?: string
+          height?: number
+          id?: string
+          name?: string
+          pos_x?: number
+          pos_y?: number
+          product_id?: string | null
+          template_id?: string | null
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "category_boxes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "category_boxes_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "process_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_overrides: {
         Row: {
           created_at: string
