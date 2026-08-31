@@ -343,14 +343,53 @@ export function InventoryOverviewPage() {
     return cats
   }
 
-  const categoriesInOrder = Array.from(new Set(allLabels.flatMap((l) => Array.from(categoriesForLabel(l))))).sort((a, b) =>
-    a === UNCATEGORIZED ? 1 : b === UNCATEGORIZED ? -1 : a.localeCompare(b, 'zh-Hant')
-  )
+  // reading order (top-to-bottom, then left-to-right) using wherever this
+  // category's box actually sits on the canvas — the first matching box
+  // found among the filtered products stands in for all of them, since
+  // boxes sharing a name are normally the same template's boxes copied to
+  // every product at the same position anyway
+  const categoryPosition = (category: string): { x: number; y: number } | null => {
+    for (const p of filteredProducts) {
+      const box = (categoryBoxesByProduct[p.id] ?? []).find((b) => b.name === category)
+      if (box) return { x: box.pos_x, y: box.pos_y }
+    }
+    return null
+  }
+
+  const categoriesInOrder = Array.from(new Set(allLabels.flatMap((l) => Array.from(categoriesForLabel(l))))).sort((a, b) => {
+    if (a === UNCATEGORIZED) return 1
+    if (b === UNCATEGORIZED) return -1
+    const pa = categoryPosition(a)
+    const pb = categoryPosition(b)
+    if (pa && pb) return pa.y !== pb.y ? pa.y - pb.y : pa.x - pb.x
+    if (pa) return -1
+    if (pb) return 1
+    return a.localeCompare(b, 'zh-Hant')
+  })
+  // same reading-order convention as categoryPosition, but for an individual
+  // tag label's own node position
+  const labelPosition = (label: string): { x: number; y: number } | null => {
+    for (const p of filteredProducts) {
+      const t = tagFor(p.id, label)
+      if (t) return { x: t.pos_x, y: t.pos_y }
+    }
+    return null
+  }
+
   const columnGroups = categoriesInOrder
     .filter((c) => !hiddenCategories.has(c))
     .map((category) => ({
       category,
-      labels: allLabels.filter((l) => categoriesForLabel(l).has(category)).sort((a, b) => a.localeCompare(b, 'zh-Hant')),
+      labels: allLabels
+        .filter((l) => categoriesForLabel(l).has(category))
+        .sort((a, b) => {
+          const pa = labelPosition(a)
+          const pb = labelPosition(b)
+          if (pa && pb) return pa.y !== pb.y ? pa.y - pb.y : pa.x - pb.x
+          if (pa) return -1
+          if (pb) return 1
+          return a.localeCompare(b, 'zh-Hant')
+        }),
     }))
 
   const toggleCategoryVisible = (category: string) => {
