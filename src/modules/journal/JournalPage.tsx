@@ -13,6 +13,14 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('zh-TW', { hour12: false })
 }
 
+function formatLogDate(iso: string): string {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const da = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${da}`
+}
+
 interface RecentLog {
   id: string
   product_id: string
@@ -28,6 +36,10 @@ interface RecentLog {
   input_label: string
   member_name: string
   outputs: { tagId: string; label: string; qty: number }[]
+  // wait_days of the action node this log is against — set only for the
+  // system-auto 等待乾燥 entries, drives the "(開始)/(結束)" label and
+  // countdown / completion-timestamp display below
+  waitDays: number | null
 }
 
 export function JournalPage() {
@@ -41,11 +53,25 @@ export function JournalPage() {
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [nowTick, setNowTick] = useState(() => Date.now())
 
   useEffect(() => {
     supabase.rpc('resolve_matured_wait_logs').then(() => load())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
+
+  // ticks the 剩餘時間 countdown on pending 等待乾燥 rows once a minute (pure
+  // client-side, no refetch); a separate slower tick re-resolves+reloads so a
+  // row that matures while this page is left open still flips to "(結束)" on
+  // its own instead of being stuck at 0.0天 until some other action refreshes it
+  useEffect(() => {
+    const tick = setInterval(() => setNowTick(Date.now()), 60_000)
+    const resolveTick = setInterval(() => setRefreshKey((k) => k + 1), 5 * 60_000)
+    return () => {
+      clearInterval(tick)
+      clearInterval(resolveTick)
+    }
+  }, [])
 
   const load = async () => {
     setLoading(true)
@@ -84,33 +110,46 @@ export function JournalPage() {
 
     const [{ data: products }, { data: nodes }, { data: members }] = await Promise.all([
       supabase.from('products').select('id, name').in('id', productIds),
-      supabase.from('process_nodes').select('id, label').in('id', nodeIds),
+      supabase.from('process_nodes').select('id, label, wait_days').in('id', nodeIds),
       supabase.from('profiles').select('id, display_name, preferred_display_name').in('id', memberIds),
     ])
 
     const productMap = Object.fromEntries((products ?? []).map((p) => [p.id, p.name]))
     const nodeMap = Object.fromEntries((nodes ?? []).map((n) => [n.id, n.label]))
+    const waitDaysMap = Object.fromEntries((nodes ?? []).map((n) => [n.id, n.wait_days]))
     const memberMap = Object.fromEntries((members ?? []).map((m) => [m.id, effectiveDisplayName(m)]))
 
     setRecent(
-      rows.map((r) => ({
-        id: r.id,
-        product_id: r.product_id,
-        action_node_id: r.action_node_id,
-        input_tag_id: r.input_tag_id,
-        log_date: r.log_date,
-        created_at: r.created_at,
-        edited_at: r.edited_at,
-        edited_by_name: r.edited_by ? (memberMap[r.edited_by] ?? '?') : null,
-        qty_consumed: r.qty_consumed,
-        product_name: productMap[r.product_id] ?? '?',
-        action_label: nodeMap[r.action_node_id] ?? '?',
-        input_label: nodeMap[r.input_tag_id] ?? '?',
-        member_name: r.member_id ? (memberMap[r.member_id] ?? '?') : '系統自動',
-        outputs: (outputs ?? [])
+      rows.map((r) => {
+        const rowOutputs = (outputs ?? [])
           .filter((o) => o.log_id === r.id)
-          .map((o) => ({ tagId: o.output_tag_id, label: nodeMap[o.output_tag_id] ?? '?', qty: o.qty })),
-      }))
+          .map((o) => ({ tagId: o.output_tag_id, label: nodeMap[o.output_tag_id] ?? '?', qty: o.qty }))
+        const waitDays = waitDaysMap[r.action_node_id] ?? null
+        const resolved = rowOutputs.length > 0
+        return {
+          id: r.id,
+          product_id: r.product_id,
+          action_node_id: r.action_node_id,
+          input_tag_id: r.input_tag_id,
+          log_date: r.log_date,
+          created_at: r.created_at,
+          edited_at: r.edited_at,
+          edited_by_name: r.edited_by ? (memberMap[r.edited_by] ?? '?') : null,
+          qty_consumed: r.qty_consumed,
+          product_name: productMap[r.product_id] ?? '?',
+          action_label: nodeMap[r.action_node_id] ?? '?',
+          input_label: nodeMap[r.input_tag_id] ?? '?',
+          member_name: r.member_id
+            ? (memberMap[r.member_id] ?? '?')
+            : waitDays != null
+              ? resolved
+                ? '系統自動(結束)'
+                : '系統自動(開始)'
+              : '系統自動',
+          outputs: rowOutputs,
+          waitDays,
+        }
+      })
     )
     setLoading(false)
   }
@@ -198,12 +237,24 @@ export function JournalPage() {
               {recent.map((r, idx) => {
                 const latest = isLatestForProduct(r, idx)
                 const isEditing = editingLogId === r.id
+                const isPendingWait = r.waitDays != null && r.outputs.length === 0
+                const isResolvedWait = r.waitDays != null && r.outputs.length > 0
+                // a resolved wait log's true "event" moment is when it
+                // actually matured, not when it entered the wait — show that
+                // instead of the raw created_at/log_date so the gap to the
+                // next station's timestamp matches wait_days, not 0
+                const displayIso = isResolvedWait
+                  ? new Date(new Date(r.created_at).getTime() + r.waitDays! * 86400000).toISOString()
+                  : r.created_at
+                const remainingDays = isPendingWait
+                  ? Math.max(0, r.waitDays! - (nowTick - new Date(r.created_at).getTime()) / 86400000)
+                  : null
                 return (
                   <div key={r.id} className="border rounded px-3 py-2 text-sm">
                     <div className="flex items-start justify-between gap-2">
                       <p>
                         <span className="text-gray-500">
-                          {r.log_date} {formatTime(r.created_at)}
+                          {isResolvedWait ? formatLogDate(displayIso) : r.log_date} {formatTime(displayIso)}
                         </span>{' '}
                         · {r.member_name} · {r.product_name} ·{' '}
                         <span style={{ fontFamily: 'ui-monospace, monospace' }}>
@@ -240,10 +291,16 @@ export function JournalPage() {
                         </div>
                       )}
                     </div>
-                    {r.outputs.length > 0 && (
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        產出：{r.outputs.map((o) => `${o.label} x${o.qty}`).join('　')}
+                    {isPendingWait ? (
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        需要等待：{r.waitDays}天、剩餘時間：{remainingDays!.toFixed(1)}天
                       </p>
+                    ) : (
+                      r.outputs.length > 0 && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          產出：{r.outputs.map((o) => `${o.label} x${o.qty}`).join('　')}
+                        </p>
+                      )
                     )}
                     {isEditing && (
                       <EditLogEntryForm

@@ -126,6 +126,10 @@ export function InventoryOverviewPage() {
   const [tagsByProduct, setTagsByProduct] = useState<Record<string, TagRow[]>>({})
   const [categoryBoxesByProduct, setCategoryBoxesByProduct] = useState<Record<string, CategoryBoxRow[]>>({})
   const [balances, setBalances] = useState<Record<string, number>>({})
+  // cellKey(productId, tagId) for tags whose outgoing edge feeds a 等待
+  // (auto-transition) node — their balance is meant to drain on its own and
+  // shouldn't be hand-corrected here, same rule as 日誌管理's 新增校正紀錄
+  const [waitInputCells, setWaitInputCells] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [filterText, setFilterText] = useState('')
   const [columnFilterText, setColumnFilterText] = useState('')
@@ -164,19 +168,23 @@ export function InventoryOverviewPage() {
       setTagsByProduct({})
       setCategoryBoxesByProduct({})
       setBalances({})
+      setWaitInputCells(new Set())
       setLoading(false)
       return
     }
-    const [{ data: tagNodes }, { data: balanceRows }, { data: boxRows }] = await Promise.all([
-      supabase
-        .from('process_nodes')
-        .select('id, product_id, label, pos_x, pos_y')
-        .eq('kind', 'tag')
-        .neq('label', '開始')
-        .in('product_id', productIds),
-      supabase.from('tag_balances').select('product_id, tag_id, available_qty').in('product_id', productIds),
-      supabase.from('category_boxes').select('product_id, name, pos_x, pos_y, width, height').in('product_id', productIds),
-    ])
+    const [{ data: tagNodes }, { data: balanceRows }, { data: boxRows }, { data: waitNodes }, { data: edgeRows }] =
+      await Promise.all([
+        supabase
+          .from('process_nodes')
+          .select('id, product_id, label, pos_x, pos_y')
+          .eq('kind', 'tag')
+          .neq('label', '開始')
+          .in('product_id', productIds),
+        supabase.from('tag_balances').select('product_id, tag_id, available_qty').in('product_id', productIds),
+        supabase.from('category_boxes').select('product_id, name, pos_x, pos_y, width, height').in('product_id', productIds),
+        supabase.from('process_nodes').select('id').in('product_id', productIds).not('wait_days', 'is', null),
+        supabase.from('process_edges').select('product_id, from_node_id, to_node_id').in('product_id', productIds),
+      ])
     const grouped: Record<string, TagRow[]> = {}
     for (const n of tagNodes ?? []) {
       if (!n.product_id) continue
@@ -184,6 +192,14 @@ export function InventoryOverviewPage() {
       ;(grouped[n.product_id] ??= []).push(row)
     }
     setTagsByProduct(grouped)
+    const waitNodeIds = new Set((waitNodes ?? []).map((n) => n.id))
+    setWaitInputCells(
+      new Set(
+        (edgeRows ?? [])
+          .filter((e) => e.product_id && waitNodeIds.has(e.to_node_id))
+          .map((e) => cellKey(e.product_id as string, e.from_node_id))
+      )
+    )
     const groupedBoxes: Record<string, CategoryBoxRow[]> = {}
     for (const b of boxRows ?? []) {
       if (!b.product_id) continue
@@ -446,7 +462,9 @@ export function InventoryOverviewPage() {
         const tag = tagFor(p.id, label)
         if (!tag) continue
         const key = cellKey(p.id, tag.id)
-        initial[key] = key in draft ? String(draft[key]) : String(baselineFor(key))
+        // ignore any stale draft value for a now auto-flowing cell — its
+        // input is disabled, so it must always resolve back to baseline
+        initial[key] = key in draft && !waitInputCells.has(key) ? String(draft[key]) : String(baselineFor(key))
       }
     }
     setEditValues(initial)
@@ -716,19 +734,30 @@ export function InventoryOverviewPage() {
                                 }
                                 const key = cellKey(p.id, tag.id)
                                 const changed = editing && Number(editValues[key]) !== baselineFor(key)
+                                const isWaitInput = waitInputCells.has(key)
                                 return (
                                   <td
                                     key={label}
                                     className={`px-3 py-1.5 text-right ${idx === 0 ? 'border-l' : ''} ${changed ? 'bg-yellow-100' : ''}`}
                                   >
                                     {editing ? (
-                                      <input
-                                        type="number"
-                                        value={editValues[key] ?? ''}
-                                        onChange={(e) => handleCellChange(key, e.target.value)}
-                                        onBlur={handleCellBlur}
-                                        className="w-16 border rounded px-1 py-0.5 text-right text-sm"
-                                      />
+                                      isWaitInput ? (
+                                        <input
+                                          type="number"
+                                          value={baselineFor(key)}
+                                          disabled
+                                          title="自動流程中，無法手動校正"
+                                          className="w-16 border rounded px-1 py-0.5 text-right text-sm bg-gray-100 text-gray-400"
+                                        />
+                                      ) : (
+                                        <input
+                                          type="number"
+                                          value={editValues[key] ?? ''}
+                                          onChange={(e) => handleCellChange(key, e.target.value)}
+                                          onBlur={handleCellBlur}
+                                          className="w-16 border rounded px-1 py-0.5 text-right text-sm"
+                                        />
+                                      )
                                     ) : (
                                       baselineFor(key)
                                     )}
