@@ -28,6 +28,10 @@ interface PendingLeaveItem {
   leave_type_name: string
   duration_type: 'full_day' | 'partial'
   hours: number | null
+  // null when that date's attendance hasn't happened/settled yet — the
+  // qualifies-or-not suggestion only makes sense once there's a real number
+  rawHours: number | null
+  defaultDailyHours: number
 }
 
 type ReviewBox =
@@ -120,41 +124,47 @@ function PendingLeaveReviewBox({ items, onChanged }: { items: PendingLeaveItem[]
   }
 
   return (
-    <div className="ml-4 mt-1 mb-2 border rounded bg-white overflow-x-auto">
-      {error && <p className="text-red-600 text-xs px-2 pt-1">{error}</p>}
-      <table className="w-full text-xs border-collapse">
-        <tbody>
-          {items.map((it) => (
-            <tr key={it.id} className="border-b last:border-b-0">
-              <td className="py-1 px-2 whitespace-nowrap">{formatDateSlash(it.leave_date)}</td>
-              <td className="py-1 px-2 whitespace-nowrap">
+    <div className="ml-4 mt-1 mb-2 space-y-1">
+      {error && <p className="text-red-600 text-xs px-1">{error}</p>}
+      {items.map((it) => {
+        const total = it.rawHours != null ? Number(it.rawHours) + Number(it.hours ?? 0) : null
+        const qualifies = total != null ? total >= it.defaultDailyHours : null
+        return (
+          <div key={it.id} className="border rounded bg-white px-2 py-1 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="whitespace-nowrap">{formatDateSlash(it.leave_date)}</span>
+              <span className="whitespace-nowrap">
                 {it.leave_type_name}
                 {it.duration_type === 'full_day'
                   ? LEAVE_DURATION_TYPE_LABELS.full_day
                   : `${formatHours(it.hours)}小時`}
-              </td>
-              <td className="py-1 px-2">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => review(it.id, 'approved')}
-                    disabled={actingId === it.id}
-                    className="text-xs bg-green-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
-                  >
-                    同意
-                  </button>
-                  <button
-                    onClick={() => review(it.id, 'rejected')}
-                    disabled={actingId === it.id}
-                    className="text-xs bg-red-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
-                  >
-                    不同意
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </span>
+              <div className="flex gap-2 ml-auto flex-shrink-0">
+                <button
+                  onClick={() => review(it.id, 'approved')}
+                  disabled={actingId === it.id}
+                  className="text-xs bg-green-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
+                >
+                  同意
+                </button>
+                <button
+                  onClick={() => review(it.id, 'rejected')}
+                  disabled={actingId === it.id}
+                  className="text-xs bg-red-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
+                >
+                  不同意
+                </button>
+              </div>
+            </div>
+            {it.duration_type === 'partial' && total != null && (
+              <p className="text-gray-500 mt-0.5">
+                原出勤時數 {formatHours(it.rawHours)} + 請假 {it.hours} 小時 = {total.toFixed(2)} 小時，約定工時{' '}
+                {it.defaultDailyHours} 小時 → {qualifies ? '已達標，視為正常出勤' : '仍未達標，維持異常出勤'}
+              </p>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -255,11 +265,23 @@ export function HomePage() {
 
         if (pendingLeaves && pendingLeaves.length > 0) {
           const memberIds = Array.from(new Set(pendingLeaves.map((r) => r.member_id)))
-          const { data: profs } = await supabase
-            .from('profiles')
-            .select('id, display_name, preferred_display_name')
-            .in('id', memberIds)
+          const leaveDates = Array.from(new Set(pendingLeaves.map((r) => r.leave_date)))
+          const [{ data: profs }, { data: attRows }] = await Promise.all([
+            supabase
+              .from('profiles')
+              .select('id, display_name, preferred_display_name, default_daily_hours')
+              .in('id', memberIds),
+            supabase
+              .from('attendance_summary')
+              .select('member_id, work_date, worked_hours')
+              .in('member_id', memberIds)
+              .in('work_date', leaveDates),
+          ])
           const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
+          const ddhMap = Object.fromEntries((profs ?? []).map((p) => [p.id, Number(p.default_daily_hours ?? 6)]))
+          const attMap = Object.fromEntries(
+            (attRows ?? []).map((a) => [`${a.member_id}::${a.work_date}`, Number(a.worked_hours ?? 0)])
+          )
 
           const groups: Record<
             string,
@@ -269,12 +291,15 @@ export function HomePage() {
             const month = r.leave_date.slice(0, 7)
             const key = `${r.member_id}-${month}`
             groups[key] ??= { memberId: r.member_id, month, leaveItems: [] }
+            const attKey = `${r.member_id}::${r.leave_date}`
             groups[key].leaveItems.push({
               id: r.id,
               leave_date: r.leave_date,
               leave_type_name: r.leave_types?.name ?? '未知假別',
               duration_type: r.duration_type,
               hours: r.hours,
+              rawHours: attKey in attMap ? attMap[attKey] : null,
+              defaultDailyHours: ddhMap[r.member_id] ?? 6,
             })
           }
 

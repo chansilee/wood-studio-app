@@ -57,6 +57,13 @@ interface SettlementRow {
   finalLabel: string
 }
 
+// 真正的曠職：整天完全沒有出勤事實（0 小時）且完全沒有請假紀錄——這才是傳統
+// 定義的「沒出現」。任何有部分打卡/補登/請假資訊、只是時數不足的紅字，都不算
+// 曠職，而是資料本身有問題，必須先回去修正，不能自動吞成曠職。
+function isTrueAbsenceCandidate(r: SettlementRow): boolean {
+  return r.finalColor === 'red' && !r.isAbsence && r.rawHours === 0 && !r.leaveTypeName
+}
+
 export function MonthlySettlementPage() {
   const { profile } = useAuth()
   const isOwner = profile?.role === 'owner'
@@ -311,7 +318,13 @@ export function MonthlySettlementPage() {
     [totalSettled, leaveTotals, hourlyWage, leaveTypeMeta]
   )
 
-  const hasUnresolvedRed = useMemo(() => rows.some((r) => r.finalColor === 'red'), [rows])
+  // 紅字分兩段：完全沒出勤且沒請假的，可以自動轉曠職；其他任何有部分打卡/
+  // 補登/請假但時數仍不足的，一律先擋住，不給產出月結，必須回去修正資料
+  const trueAbsenceRows = useMemo(() => rows.filter(isTrueAbsenceCandidate), [rows])
+  const blockingRedRows = useMemo(
+    () => rows.filter((r) => r.finalColor === 'red' && !r.isAbsence && !isTrueAbsenceCandidate(r)),
+    [rows]
+  )
 
   const isSettlementWindowOpen = () => {
     const nextYearMonth = addMonths(yearMonth, 1)
@@ -327,8 +340,16 @@ export function MonthlySettlementPage() {
       window.alert('只能在結算月份的下個月 1 日~5 日之間產出月結')
       return
     }
-    if (hasUnresolvedRed) {
-      const proceed = window.confirm('本月還有紅字未審核，若不依正常程序請假，則將轉成曠職！')
+    if (blockingRedRows.length > 0) {
+      window.alert(
+        '本月尚有紅字（最終出勤狀態）為部分出勤或請假時數不足，並非完全曠職，請先回到打卡系統/請假系統修正該日的紀錄，才能產出本月月結。'
+      )
+      return
+    }
+    if (trueAbsenceRows.length > 0) {
+      const proceed = window.confirm(
+        `本月有 ${trueAbsenceRows.length} 天完全未出勤（無任何打卡）且未請假，若不依正常程序請假，將直接轉成曠職，確定要繼續嗎？`
+      )
       if (!proceed) return
     }
     setProducing(true)
@@ -337,7 +358,7 @@ export function MonthlySettlementPage() {
     // record from a previous produce/delete cycle) become 曠職 — inserted
     // BEFORE the snapshot, since the snapshot insert triggers the month-lock
     // that would otherwise block this insert.
-    const absenceDates = rows.filter((r) => r.finalColor === 'red' && !r.isAbsence).map((r) => r.date)
+    const absenceDates = trueAbsenceRows.map((r) => r.date)
     if (absenceDates.length > 0) {
       const payload: TablesInsert<'leave_requests'>[] = absenceDates.map((date) => ({
         member_id: memberId,
@@ -514,9 +535,14 @@ export function MonthlySettlementPage() {
                 </table>
               </div>
 
-              {hasUnresolvedRed && !existingSnapshot && (
+              {!existingSnapshot && blockingRedRows.length > 0 && (
                 <p className="text-sm text-red-600 font-medium mb-4">
-                  本月尚有紅字（最終出勤狀態）未審核，產出月結時將自動轉為曠職。
+                  本月尚有紅字（最終出勤狀態）為部分出勤或請假時數不足，並非完全曠職，請先回到打卡系統/請假系統修正該日的紀錄，才能產出本月月結。
+                </p>
+              )}
+              {!existingSnapshot && blockingRedRows.length === 0 && trueAbsenceRows.length > 0 && (
+                <p className="text-sm text-red-600 font-medium mb-4">
+                  本月有 {trueAbsenceRows.length} 天完全未出勤（無任何打卡）且未請假，產出月結時將自動轉為曠職。
                 </p>
               )}
 
@@ -572,7 +598,12 @@ export function MonthlySettlementPage() {
               ) : (
                 <button
                   onClick={handleProduceSnapshot}
-                  disabled={producing}
+                  disabled={producing || blockingRedRows.length > 0}
+                  title={
+                    blockingRedRows.length > 0
+                      ? '本月尚有部分出勤/請假時數不足的紅字，需先修正才能產出'
+                      : undefined
+                  }
                   className="bg-black text-white rounded px-4 py-2 text-sm disabled:opacity-50"
                 >
                   {producing ? '產出中…' : '產出本月月結'}

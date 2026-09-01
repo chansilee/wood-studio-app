@@ -97,9 +97,10 @@ export function computeLeaveDisplay({
       const raw = Number(rawHours ?? 0)
       const leaveHours = Number(leaveRequest.hours ?? 0)
       const qualifies = raw + leaveHours >= Number(defaultDailyHours)
+      // durationLabel is already folded into this one line, so no separate
+      // secondaryLabel — avoids showing "病假1小時" then repeating it below
       return {
-        primaryLabel: durationLabel,
-        secondaryLabel: `${qualifies ? '正常' : '異常'}出勤${formatHours(raw)}小時+${durationLabel}`,
+        primaryLabel: `${qualifies ? '正常' : '異常'}出勤${formatHours(raw)}小時+${durationLabel}`,
         colorClass: qualifies ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800',
         clickable: true,
         qualifies,
