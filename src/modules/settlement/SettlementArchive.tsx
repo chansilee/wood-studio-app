@@ -3,6 +3,7 @@ import { supabase } from '@/shared/lib/supabase'
 import { formatDateSlash, formatDateTime } from '@/shared/lib/date'
 import { formatHours } from '@/modules/leave/leaveDisplay'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
+import { formatMoney } from './MonthlySettlementPage'
 import type { Tables } from '@/shared/types/database'
 
 type SnapshotRow = Tables<'settlement_snapshots'> & { member_name?: string; created_by_name?: string }
@@ -12,11 +13,18 @@ type SnapshotContentRow = {
   rawHours: number
   leaveLabel: string
   settledHours: number
+  // added when 曠職/最終出勤狀態 shipped; absent on older snapshots
+  finalColor?: 'green' | 'blue' | 'red'
+  finalLabel?: string
 }
 type SnapshotContent = {
   rows: SnapshotContentRow[]
   totalSettled: number
   leaveTotals: Record<string, number>
+  // added when 薪資試算 shipped; absent on older snapshots
+  hourlyWage?: number | null
+  leaveTypeMeta?: Record<string, { pay_coefficient: number; description: string }>
+  totalWage?: number | null
 }
 
 function monthLabel(yearMonthDate: string): string {
@@ -132,8 +140,9 @@ export function SettlementArchive() {
               <thead>
                 <tr className="text-left border-b">
                   <th className="py-1 pr-4">日期</th>
-                  <th className="py-1 pr-4">實際出勤狀態</th>
+                  <th className="py-1 pr-4">原出勤狀態</th>
                   <th className="py-1 pr-4">請假加班</th>
+                  <th className="py-1 pr-4">最終出勤狀態</th>
                   <th className="py-1 pr-4">規整上班時數</th>
                 </tr>
               </thead>
@@ -146,6 +155,19 @@ export function SettlementArchive() {
                       {formatHours(row.rawHours)}小時
                     </td>
                     <td className="py-1 pr-4">{row.leaveLabel}</td>
+                    <td
+                      className={`py-1 pr-4 font-medium ${
+                        row.finalColor === 'green'
+                          ? 'text-green-700'
+                          : row.finalColor === 'blue'
+                            ? 'text-blue-700'
+                            : row.finalColor === 'red'
+                              ? 'text-red-600'
+                              : ''
+                      }`}
+                    >
+                      {row.finalLabel ?? '—'}
+                    </td>
                     <td className="py-1 pr-4">{formatHours(row.settledHours)}小時</td>
                   </tr>
                 ))}
@@ -153,12 +175,41 @@ export function SettlementArchive() {
             </table>
           </div>
           <div className="text-sm space-y-1">
-            <p className="font-medium">規整上班時數：{formatHours(viewingContent.totalSettled)}小時</p>
-            {Object.entries(viewingContent.leaveTotals).map(([name, hours]) => (
-              <p key={name}>
-                {name}：{formatHours(hours)}小時
-              </p>
-            ))}
+            <p className="font-medium">
+              規整上班時數：{formatHours(viewingContent.totalSettled)}小時
+              {viewingContent.hourlyWage != null && (
+                <>
+                  {' '}
+                  x 時薪${formatMoney(viewingContent.hourlyWage)} = $
+                  {formatMoney(viewingContent.totalSettled * viewingContent.hourlyWage)}
+                </>
+              )}
+            </p>
+            {Object.entries(viewingContent.leaveTotals).map(([name, hours]) => {
+              const meta = viewingContent.leaveTypeMeta?.[name]
+              const perHourWage =
+                meta && viewingContent.hourlyWage != null ? viewingContent.hourlyWage * meta.pay_coefficient : null
+              return (
+                <p key={name}>
+                  {name}：{formatHours(hours)}小時
+                  {perHourWage != null && (
+                    <>
+                      {' '}
+                      x 時薪${formatMoney(perHourWage)}
+                      {meta?.description ? ` (${meta.description})` : ''} = ${formatMoney(hours * perHourWage)}
+                    </>
+                  )}
+                </p>
+              )
+            })}
+            {viewingContent.totalWage != null && (
+              <>
+                <hr className="my-2 border-gray-300" />
+                <p className="font-medium">
+                  {Number(viewing.year_month.slice(5, 7))}月全部本薪薪資：${formatMoney(viewingContent.totalWage)}
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

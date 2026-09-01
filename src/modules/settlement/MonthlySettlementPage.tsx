@@ -18,10 +18,31 @@ import {
   pad2,
   todayStr,
 } from '@/shared/lib/date'
-import type { Json, Tables } from '@/shared/types/database'
+import type { Json, Tables, TablesInsert } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
 type SettlementSnapshotRow = Tables<'settlement_snapshots'>
+
+type FinalColor = 'green' | 'blue' | 'red'
+
+export function formatMoney(n: number): string {
+  return Math.round(n).toLocaleString('en-US')
+}
+
+export function computeTotalWage(
+  totalSettledHours: number,
+  leaveTotals: Record<string, number>,
+  hourlyWage: number | null,
+  leaveTypeMeta: Record<string, { pay_coefficient: number; description: string }>
+): number | null {
+  if (hourlyWage == null) return null
+  let sum = totalSettledHours * hourlyWage
+  for (const [name, hours] of Object.entries(leaveTotals)) {
+    const meta = leaveTypeMeta[name]
+    if (meta) sum += hours * hourlyWage * meta.pay_coefficient
+  }
+  return sum
+}
 
 interface SettlementRow {
   date: string
@@ -31,6 +52,9 @@ interface SettlementRow {
   leaveTypeName: string | null
   leaveContributedHours: number
   settledHours: number
+  isAbsence: boolean
+  finalColor: FinalColor
+  finalLabel: string
 }
 
 export function MonthlySettlementPage() {
@@ -44,6 +68,10 @@ export function MonthlySettlementPage() {
   const [loading, setLoading] = useState(true)
   const [existingSnapshot, setExistingSnapshot] = useState<SettlementSnapshotRow | null>(null)
   const [producing, setProducing] = useState(false)
+  const [hourlyWage, setHourlyWage] = useState<number | null>(null)
+  const [leaveTypeMeta, setLeaveTypeMeta] = useState<
+    Record<string, { pay_coefficient: number; description: string }>
+  >({})
 
   const [year, month] = yearMonth.split('-').map(Number)
   const memberId = isOwner ? selectedMemberId : profile?.id ?? ''
@@ -114,7 +142,7 @@ export function MonthlySettlementPage() {
       return
     }
 
-    const [{ data: profileRow }, { data: attRows }, { data: leaveRows }] = await Promise.all([
+    const [{ data: profileRow }, { data: attRows }, { data: leaveRows }, { data: wageRow }] = await Promise.all([
       supabase.from('profiles').select('default_daily_hours').eq('id', memberId).single(),
       supabase
         .from('attendance_summary')
@@ -124,14 +152,29 @@ export function MonthlySettlementPage() {
         .lte('work_date', lastDay),
       supabase
         .from('leave_requests')
-        .select('leave_date, duration_type, hours, is_manager_override, leave_types(name)')
+        .select(
+          'leave_date, duration_type, hours, is_manager_override, is_absence, leave_types(name, pay_coefficient, description)'
+        )
         .eq('member_id', memberId)
         .eq('status', 'approved')
         .gte('leave_date', firstDay)
         .lte('leave_date', lastDay),
+      supabase
+        .from('member_wage_rates')
+        .select('hourly_wage')
+        .eq('member_id', memberId)
+        // a mid-month hire's first wage rate takes effect on the hire date itself
+        // (not necessarily the 1st), so match against the END of the settlement
+        // month, not the start, or a wage that started partway through the month
+        // would never be found for that month
+        .lte('effective_date', lastDay)
+        .order('effective_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ])
 
-    const defaultDailyHours = Number(profileRow?.default_daily_hours ?? 6)
+    const ddh = Number(profileRow?.default_daily_hours ?? 6)
+    setHourlyWage(wageRow ? Number(wageRow.hourly_wage) : null)
 
     const attMap: Record<string, { status: string; hours: number }> = {}
     for (const r of attRows ?? []) {
@@ -145,18 +188,42 @@ export function MonthlySettlementPage() {
       duration_type: string
       hours: number | null
       is_manager_override: boolean
-      leave_types: { name: string } | null
+      is_absence: boolean
+      leave_types: { name: string; pay_coefficient: number; description: string } | null
     }
     const leaveMap: Record<string, LeaveJoinRow> = {}
+    const typeMeta: Record<string, { pay_coefficient: number; description: string }> = {}
     for (const r of (leaveRows ?? []) as LeaveJoinRow[]) {
       leaveMap[r.leave_date] = r
+      if (r.leave_types) {
+        typeMeta[r.leave_types.name] = {
+          pay_coefficient: Number(r.leave_types.pay_coefficient),
+          description: r.leave_types.description,
+        }
+      }
     }
+    setLeaveTypeMeta(typeMeta)
 
     const computedRows: SettlementRow[] = normalDates.map((date) => {
       const att = attMap[date]
       const rawStatus: 'normal' | 'abnormal' = att?.status === 'normal' ? 'normal' : 'abnormal'
       const rawHours = att?.hours ?? 0
       const leave = leaveMap[date]
+
+      if (leave?.is_absence) {
+        return {
+          date,
+          rawStatus,
+          rawHours,
+          leaveLabel: '曠職',
+          leaveTypeName: null,
+          leaveContributedHours: 0,
+          settledHours: 0,
+          isAbsence: true,
+          finalColor: 'red',
+          finalLabel: '曠職',
+        }
+      }
 
       if (leave?.is_manager_override) {
         return {
@@ -166,7 +233,10 @@ export function MonthlySettlementPage() {
           leaveLabel: '主管同意提早下班',
           leaveTypeName: null,
           leaveContributedHours: 0,
-          settledHours: Math.floor((defaultDailyHours + 1e-9) * 2) / 2,
+          settledHours: Math.floor((ddh + 1e-9) * 2) / 2,
+          isAbsence: false,
+          finalColor: 'blue',
+          finalLabel: '主管同意提早下班',
         }
       }
 
@@ -177,7 +247,7 @@ export function MonthlySettlementPage() {
         leaveTypeName = leave.leave_types?.name ?? '未知假別'
         if (leave.duration_type === 'full_day') {
           leaveLabel = `全天${leaveTypeName}`
-          leaveContributedHours = defaultDailyHours
+          leaveContributedHours = ddh
         } else {
           const h = Number(leave.hours ?? 0)
           leaveLabel = `${formatHours(h)}小時${leaveTypeName}`
@@ -185,8 +255,22 @@ export function MonthlySettlementPage() {
         }
       }
 
-      const requiredRemaining = Math.max(0, defaultDailyHours - leaveContributedHours)
+      const requiredRemaining = Math.max(0, ddh - leaveContributedHours)
       const settledHours = Math.min(rawHours, requiredRemaining)
+
+      let finalColor: FinalColor
+      let finalLabel: string
+      if (leave && leave.duration_type === 'full_day') {
+        finalColor = 'blue'
+        finalLabel = leaveLabel
+      } else if (leave) {
+        const qualifies = rawHours + leaveContributedHours + 1e-9 >= ddh
+        finalColor = qualifies ? 'green' : 'red'
+        finalLabel = `${qualifies ? '正常' : '異常'}出勤${formatHours(rawHours)}小時 + ${leaveLabel}`
+      } else {
+        finalColor = rawStatus === 'normal' ? 'green' : 'red'
+        finalLabel = `${rawStatus === 'normal' ? '正常' : '異常'}出勤${formatHours(rawHours)}小時`
+      }
 
       return {
         date,
@@ -198,6 +282,9 @@ export function MonthlySettlementPage() {
         // 無條件捨去到 0.5 小時為單位，例如 3.4 -> 3、3.6 -> 3.5
         // (+1e-9 guards against float noise turning an exact X.5 into X.4999999…)
         settledHours: Math.floor((settledHours + 1e-9) * 2) / 2,
+        isAbsence: false,
+        finalColor,
+        finalLabel,
       }
     })
 
@@ -219,6 +306,13 @@ export function MonthlySettlementPage() {
     return totals
   }, [rows])
 
+  const totalWage = useMemo(
+    () => computeTotalWage(totalSettled, leaveTotals, hourlyWage, leaveTypeMeta),
+    [totalSettled, leaveTotals, hourlyWage, leaveTypeMeta]
+  )
+
+  const hasUnresolvedRed = useMemo(() => rows.some((r) => r.finalColor === 'red'), [rows])
+
   const isSettlementWindowOpen = () => {
     const nextYearMonth = addMonths(yearMonth, 1)
     const windowStart = `${nextYearMonth}-01`
@@ -233,18 +327,79 @@ export function MonthlySettlementPage() {
       window.alert('只能在結算月份的下個月 1 日~5 日之間產出月結')
       return
     }
+    if (hasUnresolvedRed) {
+      const proceed = window.confirm('本月還有紅字未審核，若不依正常程序請假，則將轉成曠職！')
+      if (!proceed) return
+    }
     setProducing(true)
+
+    // dates still red at this point (that don't already carry an is_absence
+    // record from a previous produce/delete cycle) become 曠職 — inserted
+    // BEFORE the snapshot, since the snapshot insert triggers the month-lock
+    // that would otherwise block this insert.
+    const absenceDates = rows.filter((r) => r.finalColor === 'red' && !r.isAbsence).map((r) => r.date)
+    if (absenceDates.length > 0) {
+      const payload: TablesInsert<'leave_requests'>[] = absenceDates.map((date) => ({
+        member_id: memberId,
+        leave_date: date,
+        is_absence: true,
+        leave_type_id: null,
+        duration_type: 'full_day',
+      }))
+      const { error: absenceError } = await supabase.from('leave_requests').insert(payload)
+      if (absenceError) {
+        setProducing(false)
+        window.alert(`曠職登記失敗：${absenceError.message}`)
+        return
+      }
+    }
+
+    const finalRows: SettlementRow[] = rows.map((r) =>
+      absenceDates.includes(r.date)
+        ? {
+            ...r,
+            leaveLabel: '曠職',
+            leaveTypeName: null,
+            leaveContributedHours: 0,
+            settledHours: 0,
+            isAbsence: true,
+            finalColor: 'red' as const,
+            finalLabel: '曠職',
+          }
+        : r
+    )
+    const finalTotalSettled = Math.round(finalRows.reduce((sum, r) => sum + r.settledHours, 0) * 100) / 100
+    const finalLeaveTotals: Record<string, number> = {}
+    for (const r of finalRows) {
+      if (r.leaveTypeName) {
+        finalLeaveTotals[r.leaveTypeName] = (finalLeaveTotals[r.leaveTypeName] ?? 0) + r.leaveContributedHours
+      }
+    }
+    // wage rate + leave-type pay coefficients/descriptions are mirrored into the
+    // snapshot as of production time, since either could change later and this
+    // snapshot must keep reflecting what was true when it was produced
+    const finalTotalWage = computeTotalWage(finalTotalSettled, finalLeaveTotals, hourlyWage, leaveTypeMeta)
+
     const { error } = await supabase.from('settlement_snapshots').insert({
       member_id: memberId,
       year_month: `${yearMonth}-01`,
-      snapshot: { rows, totalSettled, leaveTotals } as unknown as Json,
+      snapshot: {
+        rows: finalRows,
+        totalSettled: finalTotalSettled,
+        leaveTotals: finalLeaveTotals,
+        hourlyWage,
+        leaveTypeMeta,
+        totalWage: finalTotalWage,
+      } as unknown as Json,
       created_by: profile.id,
     })
-    setProducing(false)
     if (error) {
+      setProducing(false)
       window.alert(`產出失敗：${error.message}`)
       return
     }
+    await load()
+    setProducing(false)
     reloadExistingSnapshot()
   }
 
@@ -325,8 +480,9 @@ export function MonthlySettlementPage() {
                     <tr className="text-left border-b">
                       <th className="py-1 pr-4">日期</th>
                       <th className="py-1 pr-4">原排班狀態</th>
-                      <th className="py-1 pr-4">實際出勤狀態</th>
+                      <th className="py-1 pr-4">原出勤狀態</th>
                       <th className="py-1 pr-4">請假加班</th>
+                      <th className="py-1 pr-4">最終出勤狀態</th>
                       <th className="py-1 pr-4">規整上班時數</th>
                     </tr>
                   </thead>
@@ -340,6 +496,17 @@ export function MonthlySettlementPage() {
                           {formatHours(r.rawHours)}小時
                         </td>
                         <td className="py-1 pr-4">{r.leaveLabel}</td>
+                        <td
+                          className={`py-1 pr-4 font-medium ${
+                            r.finalColor === 'green'
+                              ? 'text-green-700'
+                              : r.finalColor === 'blue'
+                                ? 'text-blue-700'
+                                : 'text-red-600'
+                          }`}
+                        >
+                          {r.finalLabel}
+                        </td>
                         <td className="py-1 pr-4">{formatHours(r.settledHours)}小時</td>
                       </tr>
                     ))}
@@ -347,14 +514,51 @@ export function MonthlySettlementPage() {
                 </table>
               </div>
 
+              {hasUnresolvedRed && !existingSnapshot && (
+                <p className="text-sm text-red-600 font-medium mb-4">
+                  本月尚有紅字（最終出勤狀態）未審核，產出月結時將自動轉為曠職。
+                </p>
+              )}
+
               <div className="border-t pt-3 text-sm space-y-1">
                 <p className="font-medium">{month}月全月總結：</p>
-                <p>規整上班時數：{formatHours(totalSettled)}小時</p>
-                {Object.entries(leaveTotals).map(([name, hours]) => (
-                  <p key={name}>
-                    {name}：{formatHours(hours)}小時
-                  </p>
-                ))}
+                <p>
+                  規整上班時數：{formatHours(totalSettled)}小時
+                  {hourlyWage != null && (
+                    <>
+                      {' '}
+                      x 時薪${formatMoney(hourlyWage)} = ${formatMoney(totalSettled * hourlyWage)}
+                    </>
+                  )}
+                </p>
+                {Object.entries(leaveTotals).map(([name, hours]) => {
+                  const meta = leaveTypeMeta[name]
+                  const perHourWage = meta && hourlyWage != null ? hourlyWage * meta.pay_coefficient : null
+                  return (
+                    <p key={name}>
+                      {name}：{formatHours(hours)}小時
+                      {perHourWage != null && (
+                        <>
+                          {' '}
+                          x 時薪${formatMoney(perHourWage)}
+                          {meta?.description ? ` (${meta.description})` : ''} = $
+                          {formatMoney(hours * perHourWage)}
+                        </>
+                      )}
+                    </p>
+                  )
+                })}
+                {hourlyWage == null && (
+                  <p className="text-xs text-gray-400">（尚未設定時薪，無法計算金額）</p>
+                )}
+                {hourlyWage != null && totalWage != null && (
+                  <>
+                    <hr className="my-2 border-gray-300" />
+                    <p className="font-medium">
+                      {month}月全部本薪薪資：${formatMoney(totalWage)}
+                    </p>
+                  </>
+                )}
               </div>
             </>
           )}

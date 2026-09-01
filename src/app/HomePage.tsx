@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { supabase } from '@/shared/lib/supabase'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
-import { ROLE_LABELS } from '@/shared/constants/roles'
+import { ROLE_LABELS, LEAVE_DURATION_TYPE_LABELS } from '@/shared/constants/roles'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { GuestNotice } from '@/modules/auth/GuestNotice'
-import { addMonths, todayStr } from '@/shared/lib/date'
+import { addMonths, formatDateSlash, formatDateTime, todayStr } from '@/shared/lib/date'
+import { formatHours } from '@/modules/leave/leaveDisplay'
 
 interface NotificationItem {
   id: string
@@ -15,11 +16,155 @@ interface NotificationItem {
   sortKey: number
 }
 
+interface PendingBackfillItem {
+  id: string
+  occurred_at: string
+  event_type: 'clock_in' | 'clock_out'
+}
+
+interface PendingLeaveItem {
+  id: string
+  leave_date: string
+  leave_type_name: string
+  duration_type: 'full_day' | 'partial'
+  hours: number | null
+}
+
+type ReviewBox =
+  | { type: 'backfill'; items: PendingBackfillItem[] }
+  | { type: 'leave'; items: PendingLeaveItem[] }
+
+function PendingBackfillReviewBox({
+  items,
+  onChanged,
+}: {
+  items: PendingBackfillItem[]
+  onChanged: () => void
+}) {
+  const { profile } = useAuth()
+  const [actingId, setActingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const review = async (id: string, status: 'approved' | 'rejected') => {
+    if (!profile) return
+    setActingId(id)
+    setError(null)
+    const { error } = await supabase
+      .from('attendance_events')
+      .update({ approval_status: status, reviewed_by: profile.id, reviewed_at: new Date().toISOString() })
+      .eq('id', id)
+    setActingId(null)
+    if (error) {
+      setError(`操作失敗：${error.message}`)
+      return
+    }
+    onChanged()
+  }
+
+  return (
+    <div className="ml-4 mt-1 mb-2 border rounded bg-white overflow-x-auto">
+      {error && <p className="text-red-600 text-xs px-2 pt-1">{error}</p>}
+      <table className="w-full text-xs border-collapse">
+        <tbody>
+          {items.map((it) => (
+            <tr key={it.id} className="border-b last:border-b-0">
+              <td className="py-1 px-2 whitespace-nowrap">{formatDateTime(it.occurred_at)}</td>
+              <td className="py-1 px-2 whitespace-nowrap">
+                {it.event_type === 'clock_in' ? '補登上班' : '補登下班'}
+              </td>
+              <td className="py-1 px-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => review(it.id, 'approved')}
+                    disabled={actingId === it.id}
+                    className="text-xs bg-green-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
+                  >
+                    同意
+                  </button>
+                  <button
+                    onClick={() => review(it.id, 'rejected')}
+                    disabled={actingId === it.id}
+                    className="text-xs bg-red-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
+                  >
+                    不同意
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function PendingLeaveReviewBox({ items, onChanged }: { items: PendingLeaveItem[]; onChanged: () => void }) {
+  const { profile } = useAuth()
+  const [actingId, setActingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const review = async (id: string, status: 'approved' | 'rejected') => {
+    if (!profile) return
+    setActingId(id)
+    setError(null)
+    const { error } = await supabase
+      .from('leave_requests')
+      .update({ status, reviewed_by: profile.id, reviewed_at: new Date().toISOString() })
+      .eq('id', id)
+    setActingId(null)
+    if (error) {
+      setError(`操作失敗：${error.message}`)
+      return
+    }
+    onChanged()
+  }
+
+  return (
+    <div className="ml-4 mt-1 mb-2 border rounded bg-white overflow-x-auto">
+      {error && <p className="text-red-600 text-xs px-2 pt-1">{error}</p>}
+      <table className="w-full text-xs border-collapse">
+        <tbody>
+          {items.map((it) => (
+            <tr key={it.id} className="border-b last:border-b-0">
+              <td className="py-1 px-2 whitespace-nowrap">{formatDateSlash(it.leave_date)}</td>
+              <td className="py-1 px-2 whitespace-nowrap">
+                {it.leave_type_name}
+                {it.duration_type === 'full_day'
+                  ? LEAVE_DURATION_TYPE_LABELS.full_day
+                  : `${formatHours(it.hours)}小時`}
+              </td>
+              <td className="py-1 px-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => review(it.id, 'approved')}
+                    disabled={actingId === it.id}
+                    className="text-xs bg-green-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
+                  >
+                    同意
+                  </button>
+                  <button
+                    onClick={() => review(it.id, 'rejected')}
+                    disabled={actingId === it.id}
+                    className="text-xs bg-red-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
+                  >
+                    不同意
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function HomePage() {
   const { profile } = useAuth()
   const isOwner = profile?.role === 'owner'
   const { settings: orgSettings } = useOrgSettings()
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [reviewBoxes, setReviewBoxes] = useState<Record<string, ReviewBox>>({})
 
   const today = todayStr()
   const day = Number(today.slice(8, 10))
@@ -27,13 +172,13 @@ export function HomePage() {
   const inMonthEndWindow = day >= 25
   const inMonthStartWindow = day <= 5
 
-  useEffect(() => {
+  const build = useCallback(async () => {
     if (!profile || profile.role === 'guest') return
 
-    const build = async () => {
-      const items: NotificationItem[] = []
+    const items: NotificationItem[] = []
+    const boxes: Record<string, ReviewBox> = {}
 
-      // 1. "you received a schedule" for the viewer's own member_id.
+    // 1. "you received a schedule" for the viewer's own member_id.
       // Owners can publish any month (including pre-scheduling far in advance), so
       // check every month's latest publication rather than assuming just this/next month.
       const { data: allPubs } = await supabase
@@ -100,11 +245,12 @@ export function HomePage() {
         }
       }
 
-      // 3. owner-only: pending leave requests awaiting review, grouped by member + month
+      // 3. owner-only: pending leave requests awaiting review, grouped by member + month,
+      // with an inline approve/reject box rendered right under the notification line
       if (isOwner) {
         const { data: pendingLeaves } = await supabase
           .from('leave_requests')
-          .select('member_id, leave_date')
+          .select('id, member_id, leave_date, duration_type, hours, leave_types(name)')
           .eq('status', 'pending')
 
         if (pendingLeaves && pendingLeaves.length > 0) {
@@ -115,33 +261,45 @@ export function HomePage() {
             .in('id', memberIds)
           const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
 
-          const groups: Record<string, { memberId: string; month: string; count: number }> = {}
+          const groups: Record<
+            string,
+            { memberId: string; month: string; leaveItems: PendingLeaveItem[] }
+          > = {}
           for (const r of pendingLeaves) {
             const month = r.leave_date.slice(0, 7)
             const key = `${r.member_id}-${month}`
-            groups[key] ??= { memberId: r.member_id, month, count: 0 }
-            groups[key].count += 1
+            groups[key] ??= { memberId: r.member_id, month, leaveItems: [] }
+            groups[key].leaveItems.push({
+              id: r.id,
+              leave_date: r.leave_date,
+              leave_type_name: r.leave_types?.name ?? '未知假別',
+              duration_type: r.duration_type,
+              hours: r.hours,
+            })
           }
 
           const now = Date.now()
           for (const g of Object.values(groups)) {
             const monthNum = Number(g.month.split('-')[1])
             const name = nameMap[g.memberId] ?? '未知成員'
+            const id = `leave-pending-${g.memberId}-${g.month}`
             items.push({
-              id: `leave-pending-${g.memberId}-${g.month}`,
-              text: `你有[${g.count}]筆${name} - [${monthNum}月]待審核的請假，請至[請假系統]-該成員頁面進行審核`,
+              id,
+              text: `你有[${g.leaveItems.length}]筆${name} - [${monthNum}月]待審核的請假，請至[請假系統]-該成員頁面進行審核`,
               colorClass: 'text-red-600 font-medium',
               sortKey: now,
             })
+            boxes[id] = { type: 'leave', items: g.leaveItems }
           }
         }
       }
 
-      // 4. owner-only: pending backfill (補登) punches awaiting approval, grouped by member + month
+      // 4. owner-only: pending backfill (補登) punches awaiting approval, grouped by member + month,
+      // with an inline approve/reject box rendered right under the notification line
       if (isOwner) {
         const { data: pendingBackfills } = await supabase
           .from('attendance_events')
-          .select('member_id, occurred_at')
+          .select('id, member_id, occurred_at, event_type')
           .eq('is_backfill', true)
           .eq('approval_status', 'pending')
 
@@ -153,26 +311,35 @@ export function HomePage() {
             .in('id', memberIds)
           const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
 
-          const groups: Record<string, { memberId: string; month: string; count: number }> = {}
+          const groups: Record<
+            string,
+            { memberId: string; month: string; backfillItems: PendingBackfillItem[] }
+          > = {}
           for (const r of pendingBackfills) {
             const taipeiDate = new Date(new Date(r.occurred_at).getTime() + 8 * 3600 * 1000)
               .toISOString()
               .slice(0, 7)
             const key = `${r.member_id}-${taipeiDate}`
-            groups[key] ??= { memberId: r.member_id, month: taipeiDate, count: 0 }
-            groups[key].count += 1
+            groups[key] ??= { memberId: r.member_id, month: taipeiDate, backfillItems: [] }
+            groups[key].backfillItems.push({
+              id: r.id,
+              occurred_at: r.occurred_at,
+              event_type: r.event_type,
+            })
           }
 
           const now = Date.now()
           for (const g of Object.values(groups)) {
             const monthNum = Number(g.month.split('-')[1])
             const name = nameMap[g.memberId] ?? '未知成員'
+            const id = `backfill-pending-${g.memberId}-${g.month}`
             items.push({
-              id: `backfill-pending-${g.memberId}-${g.month}`,
-              text: `你有[${g.count}]筆${name} - [${monthNum}月]待審核的補登打卡，請至[打卡系統]-該成員頁面進行審核`,
+              id,
+              text: `你有[${g.backfillItems.length}]筆${name} - [${monthNum}月]待審核的補登打卡，請至[打卡系統]-該成員頁面進行審核`,
               colorClass: 'text-red-600 font-medium',
               sortKey: now,
             })
+            boxes[id] = { type: 'backfill', items: g.backfillItems }
           }
         }
       }
@@ -239,11 +406,9 @@ export function HomePage() {
         }
       }
 
-      items.sort((a, b) => b.sortKey - a.sortKey)
-      setNotifications(items)
-    }
-
-    build()
+    items.sort((a, b) => b.sortKey - a.sortKey)
+    setNotifications(items)
+    setReviewBoxes(boxes)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     profile?.id,
@@ -253,6 +418,10 @@ export function HomePage() {
     inMonthEndWindow,
     inMonthStartWindow,
   ])
+
+  useEffect(() => {
+    build()
+  }, [build])
 
   if (!profile || profile.role === 'guest') {
     return <GuestNotice />
@@ -280,11 +449,18 @@ export function HomePage() {
         <p className="text-sm text-gray-400">目前沒有新通知</p>
       ) : (
         <ul className="space-y-1">
-          {notifications.map((n) => (
-            <li key={n.id} className={`text-sm ${n.colorClass}`}>
-              {n.text}
-            </li>
-          ))}
+          {notifications.map((n) => {
+            const box = reviewBoxes[n.id]
+            return (
+              <li key={n.id}>
+                <p className={`text-sm ${n.colorClass}`}>{n.text}</p>
+                {box?.type === 'backfill' && (
+                  <PendingBackfillReviewBox items={box.items} onChanged={build} />
+                )}
+                {box?.type === 'leave' && <PendingLeaveReviewBox items={box.items} onChanged={build} />}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

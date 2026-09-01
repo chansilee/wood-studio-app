@@ -169,6 +169,7 @@ export type Database = {
           duration_type: Database["public"]["Enums"]["leave_duration_type"]
           hours: number | null
           id: string
+          is_absence: boolean
           is_manager_override: boolean
           leave_date: string
           leave_type_id: string | null
@@ -183,6 +184,7 @@ export type Database = {
           duration_type?: Database["public"]["Enums"]["leave_duration_type"]
           hours?: number | null
           id?: string
+          is_absence?: boolean
           is_manager_override?: boolean
           leave_date: string
           leave_type_id?: string | null
@@ -197,6 +199,7 @@ export type Database = {
           duration_type?: Database["public"]["Enums"]["leave_duration_type"]
           hours?: number | null
           id?: string
+          is_absence?: boolean
           is_manager_override?: boolean
           leave_date?: string
           leave_type_id?: string | null
@@ -1449,6 +1452,7 @@ export type Database = {
         Returns: string
       }
       has_any_owner: { Args: never; Returns: boolean }
+      is_month_settled: { Args: { p_member_id: string; p_date: string }; Returns: boolean }
       is_owner: { Args: never; Returns: boolean }
       preference_editable_year_month: { Args: never; Returns: string }
       resolve_matured_wait_logs: { Args: never; Returns: undefined }

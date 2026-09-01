@@ -21,6 +21,7 @@ import {
 import { CALENDAR_OVERRIDE_FULL_MASK, SHIFT_STATUS_LABELS } from '@/shared/constants/roles'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { isSelectableMember } from '@/shared/lib/members'
+import { isMonthSettled, MONTH_SETTLED_MESSAGE } from '@/shared/lib/settlementLock'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type ShiftStatus = Enums<'shift_status'>
@@ -57,6 +58,7 @@ export function OwnerScheduleEditor() {
   const [message, setMessage] = useState<string | null>(null)
   const [brush, setBrush] = useState<ShiftStatus>('normal')
   const [carryInStreak, setCarryInStreak] = useState(0)
+  const [monthSettled, setMonthSettled] = useState(false)
   const loadSeq = useRef(0)
   // Supabase Realtime's DELETE payload only ever carries the primary key
   // (id), never the rest of the row, even with REPLICA IDENTITY FULL — so we
@@ -107,6 +109,14 @@ export function OwnerScheduleEditor() {
     if (!selectedMemberId) return
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMemberId, yearMonth])
+
+  useEffect(() => {
+    if (!selectedMemberId) {
+      setMonthSettled(false)
+      return
+    }
+    isMonthSettled(selectedMemberId, yearMonth).then(setMonthSettled)
   }, [selectedMemberId, yearMonth])
 
   useEffect(() => {
@@ -333,6 +343,7 @@ export function OwnerScheduleEditor() {
     if (isFullMaskDate(date)) return
     if (selectedMember?.hire_date && date < selectedMember.hire_date) return
     if (orgSettings?.block_past_scheduling && date < todayStr()) return
+    if (monthSettled) return
     if (!session || !selectedMemberId) return
 
     const previous = savedStatus[date]
@@ -432,7 +443,7 @@ export function OwnerScheduleEditor() {
       : 'drifted'
 
   const handleRevert = async () => {
-    if (!session || !selectedMemberId || !latestPub) return
+    if (!session || !selectedMemberId || !latestPub || monthSettled) return
     setReverting(true)
     setMessage(null)
 
@@ -495,6 +506,11 @@ export function OwnerScheduleEditor() {
       </div>
 
       {message && <p className="text-sm mb-3 text-green-700">{message}</p>}
+      {monthSettled && (
+        <p className="text-red-600 text-sm font-medium mb-3 border border-red-200 bg-red-50 rounded px-3 py-2">
+          {MONTH_SETTLED_MESSAGE}
+        </p>
+      )}
 
       {loading || publicationsLoading ? (
         <div>載入中…</div>
@@ -536,6 +552,7 @@ export function OwnerScheduleEditor() {
             weekStartWeekday={showWeekStart ? weekStartWeekday : undefined}
             minDate={selectedMember?.hire_date}
             readOnlyBefore={orgSettings?.block_past_scheduling ? todayStr() : undefined}
+            readOnly={monthSettled}
             preferenceMap={preferenceColorMap}
           />
 
@@ -592,7 +609,7 @@ export function OwnerScheduleEditor() {
                 {publications.length > 0 && (
                   <button
                     onClick={handleRevert}
-                    disabled={reverting}
+                    disabled={reverting || monthSettled}
                     className="bg-white text-gray-700 border border-gray-300 rounded px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
                   >
                     {reverting ? '還原中…' : '還原回最後一版公告'}
@@ -600,7 +617,7 @@ export function OwnerScheduleEditor() {
                 )}
                 <button
                   onClick={handlePublish}
-                  disabled={publishing || loading || (showWeekStart && (!isCompliant || !isConsecutiveCompliant))}
+                  disabled={publishing || loading || monthSettled || (showWeekStart && (!isCompliant || !isConsecutiveCompliant))}
                   title={
                     showWeekStart && (!isCompliant || !isConsecutiveCompliant)
                       ? '請先修正上方一例一休/連續工作日的錯誤，才能公告給使用者'

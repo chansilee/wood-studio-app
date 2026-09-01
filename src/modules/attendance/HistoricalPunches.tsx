@@ -32,17 +32,20 @@ export function HistoricalPunches({
   memberId,
   yearMonth,
   canDelete,
+  monthSettled,
   refreshKey,
   onChanged,
 }: {
   memberId: string
   yearMonth: string
   canDelete: boolean
+  monthSettled: boolean
   refreshKey: number
   onChanged?: () => void
 }) {
   const { profile } = useAuth()
   const isOwner = profile?.role === 'owner'
+  const effectiveCanDelete = canDelete && !monthSettled
   const [rows, setRows] = useState<RowWithReviewer[]>([])
   const [loading, setLoading] = useState(true)
   const [actingId, setActingId] = useState<string | null>(null)
@@ -146,7 +149,7 @@ export function HistoricalPunches({
                     <th className="py-1 pr-4">日期時間</th>
                     <th className="py-1 pr-4">型態</th>
                     <th className="py-1 pr-4">狀態</th>
-                    {canDelete && <th className="py-1"></th>}
+                    {effectiveCanDelete && <th className="py-1"></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -157,7 +160,7 @@ export function HistoricalPunches({
                       <td className="py-1 pr-4">
                         {!r.is_backfill ? (
                           <span className="text-gray-400">—</span>
-                        ) : r.approval_status === 'pending' && isOwner ? (
+                        ) : r.approval_status === 'pending' && isOwner && !monthSettled ? (
                           <div className="flex gap-2">
                             <button
                               onClick={() => review(r.id, 'approved')}
@@ -198,7 +201,7 @@ export function HistoricalPunches({
                           </div>
                         )}
                       </td>
-                      {canDelete && (
+                      {effectiveCanDelete && (
                         <td className="py-1">
                           <button
                             onClick={() => remove(r.id)}

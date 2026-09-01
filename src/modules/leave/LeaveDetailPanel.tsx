@@ -4,6 +4,7 @@ import { useAuth } from '@/shared/hooks/useAuth'
 import { formatDateTime } from '@/shared/lib/date'
 import { LEAVE_DURATION_TYPE_LABELS } from '@/shared/constants/roles'
 import { computeLeaveDisplay, formatHours } from './leaveDisplay'
+import { MONTH_SETTLED_MESSAGE } from '@/shared/lib/settlementLock'
 import type { Enums, Tables, TablesInsert } from '@/shared/types/database'
 
 type LeaveType = Tables<'leave_types'>
@@ -20,6 +21,7 @@ export function LeaveDetailPanel({
   isPast,
   canDeclare,
   canUseManagerOverride,
+  monthSettled,
   leaveRequest,
   rawStatus,
   rawHours,
@@ -36,6 +38,8 @@ export function LeaveDetailPanel({
   canDeclare: boolean
   /** owner-only: this day is abnormal attendance and has no existing leave/override record yet */
   canUseManagerOverride: boolean
+  /** this date's month already has a settlement snapshot — nothing here may be created, reviewed, or deleted */
+  monthSettled: boolean
   leaveRequest?: LeaveRequestRow
   rawStatus: 'normal' | 'abnormal'
   rawHours: number | null
@@ -56,7 +60,11 @@ export function LeaveDetailPanel({
   const submit = async () => {
     if (!profile || !leaveTypeId) return
     if (durationType === 'partial' && (!hours || Number(hours) <= 0)) {
-      setError('請填寫請假時數')
+      setError('提交錯誤：請填寫請假時數')
+      return
+    }
+    if (durationType === 'partial' && Math.abs(Math.round(Number(hours) * 2) - Number(hours) * 2) > 1e-9) {
+      setError('提交錯誤：請假以半小時為單位')
       return
     }
     setSubmitting(true)
@@ -74,7 +82,7 @@ export function LeaveDetailPanel({
     const { error } = await supabase.from('leave_requests').insert(payload)
     setSubmitting(false)
     if (error) {
-      setError(`申報失敗：${error.message}`)
+      setError(`提交錯誤：${error.message}`)
       return
     }
     onChanged()
@@ -93,7 +101,7 @@ export function LeaveDetailPanel({
     const { error } = await supabase.from('leave_requests').insert(payload)
     setOverriding(false)
     if (error) {
-      setError(`操作失敗：${error.message}`)
+      setError(`提交錯誤：${error.message}`)
       return
     }
     onChanged()
@@ -109,7 +117,7 @@ export function LeaveDetailPanel({
       .eq('id', leaveRequest.id)
     setActing(false)
     if (error) {
-      setError(`操作失敗：${error.message}`)
+      setError(`提交錯誤：${error.message}`)
       return
     }
     onChanged()
@@ -122,17 +130,19 @@ export function LeaveDetailPanel({
     const { error } = await supabase.from('leave_requests').delete().eq('id', leaveRequest.id)
     setActing(false)
     if (error) {
-      setError(`刪除失敗：${error.message}`)
+      setError(`提交錯誤：${error.message}`)
       return
     }
     onChanged()
   }
 
-  const canDelete = leaveRequest
-    ? leaveRequest.is_manager_override
-      ? isOwner
-      : isOwner || memberId === profile?.id
-    : false
+  const canDelete =
+    !monthSettled &&
+    (leaveRequest
+      ? leaveRequest.is_manager_override || leaveRequest.is_absence
+        ? isOwner
+        : isOwner || memberId === profile?.id
+      : false)
 
   return (
     <div className="border rounded p-4 bg-gray-50 mb-6">
@@ -144,6 +154,7 @@ export function LeaveDetailPanel({
       </div>
 
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
+      {monthSettled && <p className="text-red-600 text-sm mb-2 font-medium">{MONTH_SETTLED_MESSAGE}</p>}
 
       {leaveRequest ? (
         <div className="space-y-2 text-sm">
@@ -159,7 +170,9 @@ export function LeaveDetailPanel({
           </p>
           <p>
             申報：
-            {leaveRequest.is_manager_override
+            {leaveRequest.is_absence ? (
+              <span className="text-red-600 font-medium">曠職（月結時系統自動判定）</span>
+            ) : leaveRequest.is_manager_override
               ? '主管同意提早下班'
               : `${leaveRequest.leave_type_name ?? '未知假別'} ${
                   leaveRequest.duration_type === 'full_day'
@@ -209,7 +222,7 @@ export function LeaveDetailPanel({
           )}
 
           <div className="flex gap-2 pt-2">
-            {isOwner && leaveRequest.status === 'pending' && (
+            {isOwner && leaveRequest.status === 'pending' && !monthSettled && (
               <>
                 <button
                   onClick={() => review('approved')}

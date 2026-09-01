@@ -20,7 +20,7 @@ export function Layout() {
           <NavLink to="/scheduling" className={navItemClass}>排班系統</NavLink>
           <NavLink to="/attendance" className={navItemClass}>打卡系統</NavLink>
           <NavLink to="/leave" className={navItemClass}>請假系統</NavLink>
-          <NavLink to="/settlement" className={navItemClass}>月結系統</NavLink>
+          {isOwner && <NavLink to="/settlement" className={navItemClass}>月結系統</NavLink>}
           <NavLink to="/journal" className={navItemClass}>日誌系統</NavLink>
           <NavLink to="/inventory" className={navItemClass}>總數瀏覽</NavLink>
           <NavLink to="/products" className={navItemClass}>產品參考</NavLink>

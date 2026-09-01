@@ -82,7 +82,7 @@ export default function App() {
             <Route
               path="/settlement"
               element={
-                <RequireRole allow={['owner', 'staff', 'apprentice']}>
+                <RequireRole allow={['owner']}>
                   <MonthlySettlementPage />
                 </RequireRole>
               }

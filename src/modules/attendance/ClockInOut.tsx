@@ -3,6 +3,7 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { prevDateStr, todayStr } from '@/shared/lib/date'
+import { isMonthSettled, MONTH_SETTLED_MESSAGE, yearMonthOf } from '@/shared/lib/settlementLock'
 import type { Enums } from '@/shared/types/database'
 
 type EventType = Enums<'attendance_event_type'>
@@ -21,8 +22,20 @@ export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
   const [backfillMessage, setBackfillMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
   )
+  const [backfillMonthSettled, setBackfillMonthSettled] = useState(false)
 
   const maxBackfillDateTime = `${prevDateStr(todayStr())}T23:59`
+
+  // proactively re-check every time the picked date changes, since a
+  // backfill can target any past date regardless of which month is
+  // currently selected elsewhere on the page
+  useEffect(() => {
+    if (!profile || !backfillDateTime) {
+      setBackfillMonthSettled(false)
+      return
+    }
+    isMonthSettled(profile.id, yearMonthOf(backfillDateTime)).then(setBackfillMonthSettled)
+  }, [profile, backfillDateTime])
 
   useEffect(() => {
     if (!profile) return
@@ -176,12 +189,15 @@ export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
             </div>
             <button
               onClick={submitBackfill}
-              disabled={submittingBackfill || !backfillDateTime}
+              disabled={submittingBackfill || !backfillDateTime || backfillMonthSettled}
               className="bg-black text-white rounded px-4 py-1.5 text-sm disabled:opacity-50"
             >
               {submittingBackfill ? '送出中…' : '送出補登申請'}
             </button>
           </div>
+          {backfillMonthSettled && (
+            <p className="mt-2 text-sm text-red-600 font-medium">{MONTH_SETTLED_MESSAGE}</p>
+          )}
           {backfillMessage && (
             <p
               className={`mt-2 text-sm ${

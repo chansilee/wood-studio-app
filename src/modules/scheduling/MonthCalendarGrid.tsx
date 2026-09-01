@@ -38,6 +38,7 @@ export function MonthCalendarGrid({
   weekStartWeekday,
   minDate,
   readOnlyBefore,
+  readOnly,
   preferenceMap,
 }: {
   year: number
@@ -50,6 +51,8 @@ export function MonthCalendarGrid({
   minDate?: string | null
   /** dates before this (YYYY-MM-DD) are never clickable, but keep their normal colors (unlike minDate) */
   readOnlyBefore?: string | null
+  /** when true, no day in this displayed month is clickable regardless of date (e.g. the month is already settled) */
+  readOnly?: boolean
   /** member's declared 排班喜好 for this month, drawn as an inset border hint even on an otherwise-blank day */
   preferenceMap?: Record<string, 'prefer_work' | 'prefer_off'>
 }) {
@@ -74,7 +77,7 @@ export function MonthCalendarGrid({
             const beforeReadOnly = !!readOnlyBefore && date < readOnlyBefore
             const isFullMasked = !!cell?.overrideName && !!cell?.overrideFullMask
             const isAdvisoryOverride = !!cell?.overrideName && !cell?.overrideFullMask
-            const clickable = !!onDayClick && !isFullMasked && !beforeMin && !beforeReadOnly
+            const clickable = !!onDayClick && !isFullMasked && !beforeMin && !beforeReadOnly && !readOnly
             const isWeekStartCol = weekStartWeekday !== undefined && di === weekStartWeekday
             const preference = preferenceMap?.[date]
             const colorClass = beforeMin

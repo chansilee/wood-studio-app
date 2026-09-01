@@ -10,6 +10,7 @@ import { MonthSelector } from '@/shared/components/MonthSelector'
 import { todayStr } from '@/shared/lib/date'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { isSelectableMember } from '@/shared/lib/members'
+import { isMonthSettled, MONTH_SETTLED_MESSAGE } from '@/shared/lib/settlementLock'
 import type { Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -24,6 +25,7 @@ export function AttendancePage() {
   const [selectedMemberId, setSelectedMemberId] = useState<string>('')
   const [allowDeleteRecords, setAllowDeleteRecords] = useState(false)
   const [yearMonth, setYearMonth] = useState(todayStr().slice(0, 7))
+  const [monthSettled, setMonthSettled] = useState(false)
 
   useEffect(() => {
     if (!isOwner || !profile) return
@@ -53,6 +55,14 @@ export function AttendancePage() {
   const viewingMember = isOwner ? members.find((m) => m.id === viewingMemberId) : profile
   const isViewingSelf = viewingMemberId === profile?.id
   const canDelete = isOwner && allowDeleteRecords
+
+  useEffect(() => {
+    if (!viewingMemberId) {
+      setMonthSettled(false)
+      return
+    }
+    isMonthSettled(viewingMemberId, yearMonth).then(setMonthSettled)
+  }, [viewingMemberId, yearMonth, refreshKey])
 
   const bump = () => setRefreshKey((k) => k + 1)
 
@@ -105,6 +115,12 @@ export function AttendancePage() {
             <MonthSelector value={yearMonth} onChange={setYearMonth} />
           </div>
 
+          {monthSettled && (
+            <p className="text-red-600 text-sm font-medium mb-3 border border-red-200 bg-red-50 rounded px-3 py-2">
+              {MONTH_SETTLED_MESSAGE}
+            </p>
+          )}
+
           {isViewingSelf && <ClockInOut onRecorded={bump} />}
 
           {viewingMemberId && viewingMember && (
@@ -120,6 +136,7 @@ export function AttendancePage() {
                 memberId={viewingMemberId}
                 yearMonth={yearMonth}
                 canDelete={canDelete}
+                monthSettled={monthSettled}
                 refreshKey={refreshKey}
                 onChanged={bump}
               />

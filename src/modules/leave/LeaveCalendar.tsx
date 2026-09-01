@@ -8,6 +8,7 @@ import { MonthSelector } from '@/shared/components/MonthSelector'
 import { computeLeaveDisplay } from './leaveDisplay'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
 import { isSelectableMember } from '@/shared/lib/members'
+import { isMonthSettled, MONTH_SETTLED_MESSAGE } from '@/shared/lib/settlementLock'
 import type { Enums, Tables } from '@/shared/types/database'
 
 type Profile = Tables<'profiles'>
@@ -34,6 +35,7 @@ export function LeaveCalendar() {
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [monthSettled, setMonthSettled] = useState(false)
 
   const [year, month] = yearMonth.split('-').map(Number)
   const memberId = isOwner ? selectedMemberId : profile?.id ?? ''
@@ -78,6 +80,14 @@ export function LeaveCalendar() {
     load()
     setSelectedDate(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberId, yearMonth, refreshKey])
+
+  useEffect(() => {
+    if (!memberId) {
+      setMonthSettled(false)
+      return
+    }
+    isMonthSettled(memberId, yearMonth).then(setMonthSettled)
   }, [memberId, yearMonth, refreshKey])
 
   const load = async () => {
@@ -176,6 +186,12 @@ export function LeaveCalendar() {
         月曆依「最新公告」的排班為準；正常班的日期都可以點選申報假別，尚未出勤（含今日結算前）的日期會先顯示「尚未出勤」。
       </p>
 
+      {monthSettled && (
+        <p className="text-red-600 text-sm font-medium mb-3 border border-red-200 bg-red-50 rounded px-3 py-2">
+          {MONTH_SETTLED_MESSAGE}
+        </p>
+      )}
+
       {selectedDate &&
         selectedMember &&
         (() => {
@@ -188,10 +204,11 @@ export function LeaveCalendar() {
               memberId={memberId}
               isOwner={isOwner}
               isPast={selectedIsPast}
-              canDeclare={memberId === profile?.id && !leaveMap[selectedDate]}
+              canDeclare={memberId === profile?.id && !leaveMap[selectedDate] && !monthSettled}
               canUseManagerOverride={
-                isOwner && !leaveMap[selectedDate] && selectedIsPast && selectedRawStatus === 'abnormal'
+                isOwner && !leaveMap[selectedDate] && selectedIsPast && selectedRawStatus === 'abnormal' && !monthSettled
               }
+              monthSettled={monthSettled}
               leaveRequest={leaveMap[selectedDate]}
               rawStatus={selectedRawStatus}
               rawHours={attendanceMap[selectedDate]?.hours ?? null}

@@ -10,7 +10,14 @@ import type { Tables } from '@/shared/types/database'
 type Product = Tables<'products'>
 type ProcessTemplate = Tables<'process_templates'>
 type TemplateApplication = Tables<'product_template_applications'>
-type TagBalance = { tag_id: string; label: string; available_qty: number }
+type TagBalance = {
+  tag_id: string
+  label: string
+  available_qty: number
+  pos_x: number
+  pos_y: number
+  categories: string[]
+}
 
 function display(v: string | number | null | undefined, empty = '未設定'): string {
   return v === null || v === undefined || v === '' ? empty : String(v)
@@ -79,24 +86,70 @@ export function ProductDetailPage() {
       supabase.from('category_boxes').select('name, pos_x, pos_y, width, height').eq('product_id', id),
     ])
     const balMap = Object.fromEntries((balRows ?? []).map((b) => [b.tag_id, b.available_qty ?? 0]))
-    setBalances((nodeRows ?? []).map((n) => ({ tag_id: n.id, label: n.label, available_qty: balMap[n.id] ?? 0 })))
+    const boxes = boxRows ?? []
+    const categoriesFor = (n: { pos_x: number; pos_y: number }): string[] =>
+      boxes
+        .filter(
+          (b) =>
+            n.pos_x >= b.pos_x &&
+            n.pos_x <= b.pos_x + b.width &&
+            n.pos_y >= b.pos_y &&
+            n.pos_y <= b.pos_y + b.height
+        )
+        .map((b) => b.name)
+
+    // category rank = the category box's own canvas reading-order position
+    // (top-to-bottom, then left-to-right) — i.e. its place in the process flow
+    const categoryOrder = boxes
+      .slice()
+      .sort((a, b) => (a.pos_y !== b.pos_y ? a.pos_y - b.pos_y : a.pos_x - b.pos_x))
+      .map((b) => b.name)
+    const categoryRank: Record<string, number> = {}
+    categoryOrder.forEach((name, i) => {
+      if (!(name in categoryRank)) categoryRank[name] = i
+    })
+
+    const balanceRows: TagBalance[] = (nodeRows ?? []).map((n) => ({
+      tag_id: n.id,
+      label: n.label,
+      available_qty: balMap[n.id] ?? 0,
+      pos_x: n.pos_x,
+      pos_y: n.pos_y,
+      categories: categoriesFor(n),
+    }))
+    // 1st level: which category this tag belongs to, ordered by that
+    // category's own position in the process flow (工序的高低); a tag in
+    // several overlapping categories uses the earliest one. Uncategorized
+    // tags sort last. 2nd level: within the same category, the tag's own
+    // canvas position (top-to-bottom, then left-to-right)
+    const primaryRank = (b: TagBalance): number =>
+      b.categories.length > 0 ? Math.min(...b.categories.map((c) => categoryRank[c] ?? Infinity)) : Infinity
+    balanceRows.sort((a, b) => {
+      const ra = primaryRank(a)
+      const rb = primaryRank(b)
+      if (ra !== rb) return ra - rb
+      return a.pos_y !== b.pos_y ? a.pos_y - b.pos_y : a.pos_x - b.pos_x
+    })
+    setBalances(balanceRows)
+
     // SKUs are entirely derived from the process flow: any tag whose
     // position falls inside a 分類虛線框 named 成品 shows up here
-    // automatically, no manual entry
-    const boxes = boxRows ?? []
+    // automatically, no manual entry — sorted in the same canvas reading order
     const skuLabels = new Set<string>()
+    const skuPositions: Record<string, { x: number; y: number }> = {}
     for (const n of nodeRows ?? []) {
-      const inSkuBox = boxes.some(
-        (b) =>
-          b.name === '成品' &&
-          n.pos_x >= b.pos_x &&
-          n.pos_x <= b.pos_x + b.width &&
-          n.pos_y >= b.pos_y &&
-          n.pos_y <= b.pos_y + b.height
-      )
-      if (inSkuBox) skuLabels.add(n.label)
+      if (categoriesFor(n).includes('成品')) {
+        skuLabels.add(n.label)
+        if (!(n.label in skuPositions)) skuPositions[n.label] = { x: n.pos_x, y: n.pos_y }
+      }
     }
-    setSkus(Array.from(skuLabels))
+    const sortedSkus = Array.from(skuLabels).sort((a, b) => {
+      const pa = skuPositions[a]
+      const pb = skuPositions[b]
+      if (pa && pb) return pa.y !== pb.y ? pa.y - pb.y : pa.x - pb.x
+      return a.localeCompare(b, 'zh-Hant')
+    })
+    setSkus(sortedSkus)
   }
 
   useEffect(() => {
@@ -481,6 +534,7 @@ export function ProductDetailPage() {
           <table className="text-sm border-collapse">
             <thead>
               <tr className="text-left border-b">
+                <th className="py-1 pr-6">標籤分類</th>
                 <th className="py-1 pr-6">狀態標籤</th>
                 <th className="py-1 pr-6">目前數量</th>
               </tr>
@@ -490,6 +544,9 @@ export function ProductDetailPage() {
                 .filter((b) => b.label !== '開始')
                 .map((b) => (
                   <tr key={b.tag_id} className="border-b">
+                    <td className="py-1 pr-6 text-gray-500">
+                      {b.categories.length > 0 ? b.categories.join('、') : '未分類'}
+                    </td>
                     <td className="py-1 pr-6">{b.label}</td>
                     <td className="py-1 pr-6 tabular-nums">{b.available_qty}</td>
                   </tr>
