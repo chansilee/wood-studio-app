@@ -14,7 +14,7 @@ export function Layout() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="font-semibold">木雕工作室管理系統</div>
+        <div className="font-semibold">柴柴疤疤工作室管理系統</div>
         <nav className="flex flex-wrap gap-1">
           <NavLink to="/" end className={navItemClass}>首頁</NavLink>
           <NavLink to="/scheduling" className={navItemClass}>排班系統</NavLink>

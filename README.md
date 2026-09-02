@@ -1,4 +1,4 @@
-# 木雕工作室管理系統
+# 柴柴疤疤工作室管理系統
 
 架構說明見 [docs/architecture.md](docs/architecture.md)，資料庫 schema 見 [docs/db-schema.md](docs/db-schema.md)。
 
