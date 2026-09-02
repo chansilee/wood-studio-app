@@ -127,7 +127,7 @@ export function MonthlySettlementPage() {
 
   const [year, month] = yearMonth.split('-').map(Number)
   const memberId = isOwner ? selectedMemberId : profile?.id ?? ''
-  const { publications } = useSchedulePublications(memberId || undefined, yearMonth)
+  const { publications, loading: publicationsLoading } = useSchedulePublications(memberId || undefined, yearMonth)
   const latestSnapshot = publications[0]
   const { settings: orgSettings } = useOrgSettings()
   const appliedDefaultMonth = useRef(false)
@@ -153,10 +153,16 @@ export function MonthlySettlementPage() {
   }, [isOwner, profile])
 
   useEffect(() => {
-    if (!memberId) return
+    // switching member/month leaves `publications` holding the PREVIOUS
+    // member's snapshot for one render (it only resets once its own fetch
+    // resolves) — loading here too early would compute normalDates off the
+    // wrong member's schedule, then immediately re-fire once the real
+    // snapshot lands, which is exactly what caused the double-flash. Wait
+    // for the publications fetch itself to finish first.
+    if (!memberId || publicationsLoading) return
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberId, yearMonth, latestSnapshot])
+  }, [memberId, yearMonth, latestSnapshot, publicationsLoading])
 
   const reloadExistingSnapshot = () => {
     if (!isOwner || !memberId) return
