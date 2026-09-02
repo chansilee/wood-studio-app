@@ -4,15 +4,27 @@ import { useAuth } from '@/shared/hooks/useAuth'
 import { useOrgSettings } from '@/shared/hooks/useOrgSettings'
 import { prevDateStr, todayStr } from '@/shared/lib/date'
 import { isMonthSettled, MONTH_SETTLED_MESSAGE, yearMonthOf } from '@/shared/lib/settlementLock'
+import { ATTENDANCE_BUFFER_HOURS } from '@/shared/lib/attendanceStatus'
 import type { Enums } from '@/shared/types/database'
 
 type EventType = Enums<'attendance_event_type'>
+
+const EARLY_CLOCK_IN_ALLOWANCE_MINUTES = 15
+
+/** minutes remaining until `scheduledStartTime` ('HH:MM:SS'), today, in the viewer's local clock */
+function minutesUntilScheduledStart(scheduledStartTime: string): number {
+  const [h, m] = scheduledStartTime.split(':').map(Number)
+  const now = new Date()
+  const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0)
+  return (scheduled.getTime() - now.getTime()) / 60000
+}
 
 export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
   const { profile } = useAuth()
   const { settings: orgSettings } = useOrgSettings()
   const [busy, setBusy] = useState<'in' | 'out' | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
   const [isWorkday, setIsWorkday] = useState<boolean | null>(null)
 
   const [showBackfill, setShowBackfill] = useState(false)
@@ -50,8 +62,18 @@ export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
 
   const punch = (eventType: EventType) => {
     if (!profile) return
-    setBusy(eventType === 'clock_in' ? 'in' : 'out')
     setMessage(null)
+    setWarning(null)
+
+    if (eventType === 'clock_in' && profile.scheduled_start_time) {
+      const early = minutesUntilScheduledStart(profile.scheduled_start_time)
+      if (early > EARLY_CLOCK_IN_ALLOWANCE_MINUTES) {
+        setMessage({ type: 'error', text: '只允許約定上班時間前15分鐘內開放打卡！' })
+        return
+      }
+    }
+
+    setBusy(eventType === 'clock_in' ? 'in' : 'out')
 
     if (!('geolocation' in navigator)) {
       setMessage({ type: 'error', text: '此瀏覽器不支援定位功能，無法打卡' })
@@ -76,6 +98,7 @@ export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
             text: eventType === 'clock_in' ? '上班打卡成功' : '下班打卡成功',
           })
           onRecorded?.()
+          if (eventType === 'clock_out') await checkClockOutBuffer()
         }
       },
       (geoError) => {
@@ -84,6 +107,36 @@ export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     )
+  }
+
+  // non-blocking heads-up: the punch itself already succeeded above, this
+  // just prompts the employee to go resolve the excess in 請假系統 if today's
+  // worked hours land beyond the (OT-extended) paid buffer ceiling
+  const checkClockOutBuffer = async () => {
+    if (!profile) return
+    const today = todayStr()
+    const [{ data: summary }, { data: otRow }] = await Promise.all([
+      supabase
+        .from('attendance_summary')
+        .select('worked_hours')
+        .eq('member_id', profile.id)
+        .eq('work_date', today)
+        .maybeSingle(),
+      supabase
+        .from('overtime_pre_reports')
+        .select('requested_hours')
+        .eq('member_id', profile.id)
+        .eq('work_date', today)
+        .eq('status', 'approved')
+        .maybeSingle(),
+    ])
+    const worked = Number(summary?.worked_hours ?? 0)
+    const ddh = Number(profile.default_daily_hours ?? 6)
+    const approvedOT = otRow ? Number(otRow.requested_hours) : null
+    const ceiling = ddh + (approvedOT ?? ATTENDANCE_BUFFER_HOURS)
+    if (worked > ceiling) {
+      setWarning('下班打卡時間超過緩衝15分鐘，請於請假系統回覆超時工作事實！')
+    }
   }
 
   const submitBackfill = async () => {
@@ -161,6 +214,7 @@ export function ClockInOut({ onRecorded }: { onRecorded?: () => void }) {
           {message.text}
         </p>
       )}
+      {warning && <p className="mt-1 text-sm text-amber-600 font-medium">{warning}</p>}
 
       {showBackfill && (
         <div className="mt-4 border rounded p-4 bg-gray-50">

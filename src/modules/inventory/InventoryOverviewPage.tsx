@@ -152,9 +152,26 @@ export function InventoryOverviewPage() {
 
   const load = async () => {
     setLoading(true)
-    const [{ data: productRows, error: prodErr }, { data: priceRows }] = await Promise.all([
+    // all 7 queries fire in one round trip instead of two sequential batches
+    // (the second batch used to wait on productIds from the first purely to
+    // scope an .in() filter — for a single-tenant app that's unnecessary,
+    // these tables only ever hold this studio's own rows anyway)
+    const [
+      { data: productRows, error: prodErr },
+      { data: priceRows },
+      { data: tagNodes },
+      { data: balanceRows },
+      { data: boxRows },
+      { data: waitNodes },
+      { data: edgeRows },
+    ] = await Promise.all([
       supabase.from('products').select('*').order('name'),
       supabase.from('current_product_prices').select('product_id, price'),
+      supabase.from('process_nodes').select('id, product_id, label, pos_x, pos_y').eq('kind', 'tag').neq('label', '開始'),
+      supabase.from('tag_balances').select('product_id, tag_id, available_qty'),
+      supabase.from('category_boxes').select('product_id, name, pos_x, pos_y, width, height'),
+      supabase.from('process_nodes').select('id').not('wait_days', 'is', null),
+      supabase.from('process_edges').select('product_id, from_node_id, to_node_id'),
     ])
     if (prodErr) setError(prodErr.message)
     const prods = productRows ?? []
@@ -163,28 +180,6 @@ export function InventoryOverviewPage() {
       Object.fromEntries((priceRows ?? []).filter((r) => r.product_id && r.price !== null).map((r) => [r.product_id as string, r.price as number]))
     )
 
-    const productIds = prods.map((p) => p.id)
-    if (productIds.length === 0) {
-      setTagsByProduct({})
-      setCategoryBoxesByProduct({})
-      setBalances({})
-      setWaitInputCells(new Set())
-      setLoading(false)
-      return
-    }
-    const [{ data: tagNodes }, { data: balanceRows }, { data: boxRows }, { data: waitNodes }, { data: edgeRows }] =
-      await Promise.all([
-        supabase
-          .from('process_nodes')
-          .select('id, product_id, label, pos_x, pos_y')
-          .eq('kind', 'tag')
-          .neq('label', '開始')
-          .in('product_id', productIds),
-        supabase.from('tag_balances').select('product_id, tag_id, available_qty').in('product_id', productIds),
-        supabase.from('category_boxes').select('product_id, name, pos_x, pos_y, width, height').in('product_id', productIds),
-        supabase.from('process_nodes').select('id').in('product_id', productIds).not('wait_days', 'is', null),
-        supabase.from('process_edges').select('product_id, from_node_id, to_node_id').in('product_id', productIds),
-      ])
     const grouped: Record<string, TagRow[]> = {}
     for (const n of tagNodes ?? []) {
       if (!n.product_id) continue
@@ -217,7 +212,12 @@ export function InventoryOverviewPage() {
   }
 
   useEffect(() => {
-    supabase.rpc('resolve_matured_wait_logs').then(() => load())
+    // this sweep also runs hourly via pg_cron regardless — firing it here
+    // opportunistically catches a matured wait-node sooner, but there's no
+    // need to make the page's own load wait behind it (worst case the table
+    // is a few seconds stale until the sweep finishes and a reload picks it up)
+    supabase.rpc('resolve_matured_wait_logs')
+    load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

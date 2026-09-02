@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { ClockInOut } from './ClockInOut'
@@ -71,29 +72,43 @@ export function AttendancePage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h1 className="text-xl font-semibold">打卡系統</h1>
         {isOwner && (
-          <div className="flex gap-1">
-            <button
-              onClick={() => setTab('clock')}
-              className={`px-3 py-1.5 rounded text-sm ${
-                tab === 'clock' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
-              }`}
-            >
-              打卡
-            </button>
-            <button
-              onClick={() => setTab('settings')}
-              className={`px-3 py-1.5 rounded text-sm ${
-                tab === 'settings' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
-              }`}
-            >
-              設定
-            </button>
+          <div className="flex items-center gap-3 ml-auto">
+            <Link to="/attendance-terms/records" className="text-xs text-blue-700 underline whitespace-nowrap">
+              查看員工確認條款紀錄
+            </Link>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setTab('clock')}
+                className={`px-3 py-1.5 rounded text-sm ${
+                  tab === 'clock' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                打卡
+              </button>
+              <button
+                onClick={() => setTab('settings')}
+                className={`px-3 py-1.5 rounded text-sm ${
+                  tab === 'settings' ? 'bg-black text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                設定
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       {tab === 'clock' ? (
         <>
+          {!isOwner && (
+            <Link
+              to="/attendance-terms"
+              className="inline-block mb-4 border border-red-200 bg-red-50 rounded px-3 py-1.5 text-sm text-red-700 hover:bg-red-100"
+            >
+              【員工線上打卡與工作時間確認條款】
+            </Link>
+          )}
+
           <div className="flex flex-wrap items-end gap-3 mb-4">
             {isOwner && (
               <div>

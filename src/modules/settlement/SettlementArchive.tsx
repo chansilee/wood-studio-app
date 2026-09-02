@@ -9,27 +9,50 @@ import type { Tables } from '@/shared/types/database'
 type SnapshotRow = Tables<'settlement_snapshots'> & { member_name?: string; created_by_name?: string }
 type SnapshotContentRow = {
   date: string
-  rawStatus: 'normal' | 'abnormal'
   rawHours: number
-  leaveLabel: string
-  settledHours: number
-  // added when 曠職/最終出勤狀態 shipped; absent on older snapshots
-  finalColor?: 'green' | 'blue' | 'red'
+  // current generation (契約工時 redesign)
+  clockInAt?: string | null
+  clockOutAt?: string | null
+  contractHours?: number
+  contractLabel?: string
+  statusNote?: string
+  varianceLabel?: string
+  overtimeConfirmationText?: string
+  // previous generation (原始狀態/請假/預報額外出勤/延工事實 columns)
+  leaveLabel?: string
   finalLabel?: string
+  finalColor?: 'green' | 'blue' | 'red'
+  overtimeStatus?: 'none' | 'pending' | 'approved' | 'rejected'
+  overtimeApprovedHours?: number
+  overtimeFact?: string
+  paidHours?: number
+  // oldest generation (規整上班時數 only)
+  settledHours?: number
 }
 type SnapshotContent = {
   rows: SnapshotContentRow[]
-  totalSettled: number
   leaveTotals: Record<string, number>
-  // added when 薪資試算 shipped; absent on older snapshots
   hourlyWage?: number | null
   leaveTypeMeta?: Record<string, { pay_coefficient: number; description: string }>
   totalWage?: number | null
+  totalNormalRateHours?: number
+  totalTier2Hours?: number
+  totalTier3Hours?: number
+  totalPaidHours?: number
+  totalSettled?: number
 }
+
+const OVERTIME_TIER2_RATE = 1.33
+const OVERTIME_TIER3_RATE = 1.66
 
 function monthLabel(yearMonthDate: string): string {
   const [y, m] = yearMonthDate.slice(0, 7).split('-').map(Number)
   return `${y}年${m}月`
+}
+
+function formatClockTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' })
 }
 
 export function SettlementArchive() {
@@ -140,23 +163,28 @@ export function SettlementArchive() {
               <thead>
                 <tr className="text-left border-b">
                   <th className="py-1 pr-4">日期</th>
-                  <th className="py-1 pr-4">原出勤狀態</th>
-                  <th className="py-1 pr-4">請假加班</th>
-                  <th className="py-1 pr-4">最終出勤狀態</th>
-                  <th className="py-1 pr-4">規整上班時數</th>
+                  <th className="py-1 pr-4">上班打卡</th>
+                  <th className="py-1 pr-4">下班打卡</th>
+                  <th className="py-1 pr-4">實際停留時數</th>
+                  <th className="py-1 pr-4">契約工時</th>
+                  <th className="py-1 pr-4">請假 / 出勤狀況註記</th>
+                  <th className="py-1 pr-4">超出/不足時數</th>
+                  <th className="py-1 pr-4">延工 / 自主時間確認</th>
+                  <th className="py-1 pr-4">給薪時數</th>
                 </tr>
               </thead>
               <tbody>
                 {viewingContent.rows.map((row) => (
-                  <tr key={row.date} className="border-b">
+                  <tr key={row.date} className="border-b align-top">
                     <td className="py-1 pr-4 whitespace-nowrap">{formatDateSlash(row.date)}</td>
-                    <td className="py-1 pr-4">
-                      {row.rawStatus === 'normal' ? '正常出勤' : '異常出勤'}
-                      {formatHours(row.rawHours)}小時
+                    <td className="py-1 pr-4 whitespace-nowrap">{formatClockTime(row.clockInAt)}</td>
+                    <td className="py-1 pr-4 whitespace-nowrap">{formatClockTime(row.clockOutAt)}</td>
+                    <td className="py-1 pr-4 whitespace-nowrap">{formatHours(row.rawHours)}小時</td>
+                    <td className="py-1 pr-4 whitespace-nowrap">
+                      {row.contractLabel ?? (row.contractHours != null ? `${formatHours(row.contractHours)}小時` : '—')}
                     </td>
-                    <td className="py-1 pr-4">{row.leaveLabel}</td>
                     <td
-                      className={`py-1 pr-4 font-medium ${
+                      className={`py-1 pr-4 ${
                         row.finalColor === 'green'
                           ? 'text-green-700'
                           : row.finalColor === 'blue'
@@ -166,25 +194,80 @@ export function SettlementArchive() {
                               : ''
                       }`}
                     >
-                      {row.finalLabel ?? '—'}
+                      {row.statusNote ?? row.finalLabel ?? row.leaveLabel ?? '—'}
                     </td>
-                    <td className="py-1 pr-4">{formatHours(row.settledHours)}小時</td>
+                    <td className="py-1 pr-4 whitespace-nowrap">{row.varianceLabel ?? '—'}</td>
+                    <td className="py-1 pr-4">
+                      {row.overtimeConfirmationText ??
+                        (row.overtimeStatus === 'approved'
+                          ? `已核准 ${formatHours(row.overtimeApprovedHours ?? 0)}小時`
+                          : row.overtimeFact?.trim() || '—')}
+                    </td>
+                    <td className="py-1 pr-4 whitespace-nowrap">
+                      {formatHours(row.paidHours ?? row.settledHours ?? 0)}小時
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="text-sm space-y-1">
-            <p className="font-medium">
-              規整上班時數：{formatHours(viewingContent.totalSettled)}小時
-              {viewingContent.hourlyWage != null && (
-                <>
-                  {' '}
-                  x 時薪${formatMoney(viewingContent.hourlyWage)} = $
-                  {formatMoney(viewingContent.totalSettled * viewingContent.hourlyWage)}
-                </>
-              )}
-            </p>
+            {viewingContent.totalNormalRateHours != null ? (
+              <>
+                <p>
+                  給薪時數（原費率）：{formatHours(viewingContent.totalNormalRateHours)}小時
+                  {viewingContent.hourlyWage != null && (
+                    <>
+                      {' '}
+                      x 時薪${formatMoney(viewingContent.hourlyWage)} = $
+                      {formatMoney(viewingContent.totalNormalRateHours * viewingContent.hourlyWage)}
+                    </>
+                  )}
+                </p>
+                {(viewingContent.totalTier2Hours ?? 0) > 0 && (
+                  <p>
+                    給薪時數（1.33倍）：{formatHours(viewingContent.totalTier2Hours ?? 0)}小時
+                    {viewingContent.hourlyWage != null && (
+                      <>
+                        {' '}
+                        x 時薪${formatMoney(viewingContent.hourlyWage * OVERTIME_TIER2_RATE)} = $
+                        {formatMoney(
+                          (viewingContent.totalTier2Hours ?? 0) * viewingContent.hourlyWage * OVERTIME_TIER2_RATE
+                        )}
+                      </>
+                    )}
+                  </p>
+                )}
+                {(viewingContent.totalTier3Hours ?? 0) > 0 && (
+                  <p>
+                    給薪時數（1.66倍）：{formatHours(viewingContent.totalTier3Hours ?? 0)}小時
+                    {viewingContent.hourlyWage != null && (
+                      <>
+                        {' '}
+                        x 時薪${formatMoney(viewingContent.hourlyWage * OVERTIME_TIER3_RATE)} = $
+                        {formatMoney(
+                          (viewingContent.totalTier3Hours ?? 0) * viewingContent.hourlyWage * OVERTIME_TIER3_RATE
+                        )}
+                      </>
+                    )}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500">
+                  給薪時數合計：{formatHours(viewingContent.totalPaidHours ?? 0)}小時
+                </p>
+              </>
+            ) : (
+              <p className="font-medium">
+                規整上班時數：{formatHours(viewingContent.totalSettled ?? 0)}小時
+                {viewingContent.hourlyWage != null && (
+                  <>
+                    {' '}
+                    x 時薪${formatMoney(viewingContent.hourlyWage)} = $
+                    {formatMoney((viewingContent.totalSettled ?? 0) * viewingContent.hourlyWage)}
+                  </>
+                )}
+              </p>
+            )}
             {Object.entries(viewingContent.leaveTotals).map(([name, hours]) => {
               const meta = viewingContent.leaveTypeMeta?.[name]
               const perHourWage =

@@ -77,6 +77,164 @@ export type Database = {
           },
         ]
       }
+      attendance_terms_acknowledgments: {
+        Row: {
+          acknowledged_at: string
+          id: string
+          member_id: string
+        }
+        Insert: {
+          acknowledged_at?: string
+          id?: string
+          member_id: string
+        }
+        Update: {
+          acknowledged_at?: string
+          id?: string
+          member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_terms_acknowledgments_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_overtime_facts: {
+        Row: {
+          member_id: string
+          note: string
+          recorded_at: string
+          recorded_by: string | null
+          resolution: "unresolved" | "paid_as_overtime" | "self_practice"
+          work_date: string
+        }
+        Insert: {
+          member_id: string
+          note?: string
+          recorded_at?: string
+          recorded_by?: string | null
+          resolution?: "unresolved" | "paid_as_overtime" | "self_practice"
+          work_date: string
+        }
+        Update: {
+          member_id?: string
+          note?: string
+          recorded_at?: string
+          recorded_by?: string | null
+          resolution?: "unresolved" | "paid_as_overtime" | "self_practice"
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_overtime_facts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_overtime_facts_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      overtime_pre_reports: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          requested_hours: number
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source: "self" | "owner_manual"
+          status: Database["public"]["Enums"]["leave_status"]
+          work_date: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          requested_hours: number
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source?: "self" | "owner_manual"
+          status?: Database["public"]["Enums"]["leave_status"]
+          work_date: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          requested_hours?: number
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source?: "self" | "owner_manual"
+          status?: Database["public"]["Enums"]["leave_status"]
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overtime_pre_reports_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_pre_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      overtime_report_gates: {
+        Row: {
+          is_open: boolean
+          member_id: string
+          opened_at: string | null
+          opened_by: string | null
+          work_date: string
+        }
+        Insert: {
+          is_open?: boolean
+          member_id: string
+          opened_at?: string | null
+          opened_by?: string | null
+          work_date: string
+        }
+        Update: {
+          is_open?: boolean
+          member_id?: string
+          opened_at?: string | null
+          opened_by?: string | null
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overtime_report_gates_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_report_gates_opened_by_fkey"
+            columns: ["opened_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       category_boxes: {
         Row: {
           created_at: string
@@ -1024,6 +1182,7 @@ export type Database = {
           preferred_display_name: string | null
           pure_management: boolean
           role: Database["public"]["Enums"]["member_role"]
+          scheduled_start_time: string
           updated_at: string
           weekly_rest_check_enabled: boolean
         }
@@ -1039,6 +1198,7 @@ export type Database = {
           preferred_display_name?: string | null
           pure_management?: boolean
           role?: Database["public"]["Enums"]["member_role"]
+          scheduled_start_time?: string
           updated_at?: string
           weekly_rest_check_enabled?: boolean
         }
@@ -1054,6 +1214,7 @@ export type Database = {
           preferred_display_name?: string | null
           pure_management?: boolean
           role?: Database["public"]["Enums"]["member_role"]
+          scheduled_start_time?: string
           updated_at?: string
           weekly_rest_check_enabled?: boolean
         }
@@ -1455,6 +1616,7 @@ export type Database = {
       is_month_settled: { Args: { p_member_id: string; p_date: string }; Returns: boolean }
       is_owner: { Args: never; Returns: boolean }
       preference_editable_year_month: { Args: never; Returns: string }
+      expire_stale_overtime_reports: { Args: never; Returns: undefined }
       resolve_matured_wait_logs: { Args: never; Returns: undefined }
     }
     Enums: {

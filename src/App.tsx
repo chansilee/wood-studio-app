@@ -13,6 +13,10 @@ import { ResetPasswordPage } from '@/modules/auth/ResetPasswordPage'
 import { MembersPage } from '@/modules/members/MembersPage'
 import { SchedulingPage } from '@/modules/scheduling/SchedulingPage'
 import { AttendancePage } from '@/modules/attendance/AttendancePage'
+import { AttendanceTermsPage } from '@/modules/attendance/AttendanceTermsPage'
+import { AttendanceTermsRecordsPage } from '@/modules/attendance/AttendanceTermsRecordsPage'
+import { AttendanceTermsRecordDetailPage } from '@/modules/attendance/AttendanceTermsRecordDetailPage'
+import { OvertimeRequestPage } from '@/modules/attendance/OvertimeRequestPage'
 import { LeavePage } from '@/modules/leave/LeavePage'
 import { MonthlySettlementPage } from '@/modules/settlement/MonthlySettlementPage'
 import { JournalPage } from '@/modules/journal/JournalPage'
@@ -68,6 +72,38 @@ export default function App() {
               element={
                 <RequireRole allow={['owner', 'staff']}>
                   <AttendancePage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/attendance-terms"
+              element={
+                <RequireRole allow={['owner', 'staff']}>
+                  <AttendanceTermsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/attendance-terms/records"
+              element={
+                <RequireRole allow={['owner']}>
+                  <AttendanceTermsRecordsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/attendance-terms/records/:memberId"
+              element={
+                <RequireRole allow={['owner']}>
+                  <AttendanceTermsRecordDetailPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/overtime"
+              element={
+                <RequireRole allow={['owner', 'staff']}>
+                  <OvertimeRequestPage />
                 </RequireRole>
               }
             />

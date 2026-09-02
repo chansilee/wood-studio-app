@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
-import { daysInMonth, pad2, todayStr } from '@/shared/lib/date'
+import { daysInMonth, nextDateStr, pad2, todayStr } from '@/shared/lib/date'
 import { formatHours } from '@/modules/leave/leaveDisplay'
 import type { Tables } from '@/shared/types/database'
 
@@ -56,6 +56,12 @@ export function AttendanceHistory({
 
     const firstDayStart = `${firstDay}T00:00:00+08:00`
     const todayStart = `${today}T00:00:00+08:00`
+    // pending-events window must stay within the SELECTED month — otherwise
+    // browsing back to a past month (e.g. July, while today is in September)
+    // would still pull in every later month's unsettled events too, since
+    // the range would run all the way from July 1st through today
+    const monthEndExclusiveStart = `${nextDateStr(lastDay)}T00:00:00+08:00`
+    const pendingRangeEnd = todayStart < monthEndExclusiveStart ? todayStart : monthEndExclusiveStart
 
     const [{ data }, { data: profileRow }, { data: leaveRows }, { data: eventRows }] = await Promise.all([
       supabase
@@ -82,7 +88,7 @@ export function AttendanceHistory({
         .eq('member_id', memberId)
         .neq('approval_status', 'rejected')
         .gte('occurred_at', firstDayStart)
-        .lt('occurred_at', todayStart)
+        .lt('occurred_at', pendingRangeEnd)
         .order('occurred_at', { ascending: true }),
     ])
 

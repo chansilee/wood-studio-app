@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { ROLE_LABELS, type MemberRole } from '@/shared/constants/roles'
 import { effectiveDisplayName } from '@/shared/lib/displayName'
+import { formatDateTime } from '@/shared/lib/date'
 import { MemberWageTable } from './MemberWageTable'
 import type { Tables } from '@/shared/types/database'
 
@@ -15,15 +16,27 @@ export function MembersPage() {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expandedWageId, setExpandedWageId] = useState<string | null>(null)
+  // latest 員工線上打卡與工作時間確認條款 acknowledgment per member, for the
+  // owner's records — keyed by member_id, value is the acknowledged_at ISO string
+  const [termsAckMap, setTermsAckMap] = useState<Record<string, string>>({})
 
   const load = async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: true })
+    const [{ data, error }, { data: ackRows }] = await Promise.all([
+      supabase.from('profiles').select('*').order('created_at', { ascending: true }),
+      supabase
+        .from('attendance_terms_acknowledgments')
+        .select('member_id, acknowledged_at')
+        .order('acknowledged_at', { ascending: false }),
+    ])
     if (error) setError(error.message)
     setMembers(data ?? [])
+    const ackMap: Record<string, string> = {}
+    for (const r of ackRows ?? []) {
+      // rows are newest-first, so the first one seen per member is the latest
+      ackMap[r.member_id] ??= r.acknowledged_at
+    }
+    setTermsAckMap(ackMap)
     setLoading(false)
   }
 
@@ -57,6 +70,19 @@ export function MembersPage() {
       setMembers((prev) =>
         prev.map((m) => (m.id === id ? { ...m, default_daily_hours: hours } : m))
       )
+    setSavingId(null)
+  }
+
+  const updateScheduledStartTime = async (id: string, time: string) => {
+    if (!time) return
+    setSavingId(id)
+    setError(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ scheduled_start_time: time })
+      .eq('id', id)
+    if (error) setError(error.message)
+    else setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, scheduled_start_time: time } : m)))
     setSavingId(null)
   }
 
@@ -151,7 +177,7 @@ export function MembersPage() {
     <div className="p-6 max-w-4xl mx-auto">
       <h1 className="text-xl font-semibold mb-4">成員管理</h1>
       <p className="text-sm text-gray-600 mb-4">
-        新註冊的帳號預設為「訪客」，請在此指派正確身分。只有負責人可以修改身分、約定每日工時、到職日與一例一休檢查設定。
+        新註冊的帳號預設為「訪客」，請在此指派正確身分。只有負責人可以修改身分、約定每日工時、約定上班時間、到職日與一例一休檢查設定。
       </p>
       <p className="text-sm text-gray-600 mb-4">
         「顯示名稱」是帳號自己設定的名字；填寫「本名（管理用）」後，全站（含該成員自己看到的畫面）都會改顯示這個名字，留空則維持顯示帳號自己設定的名字。
@@ -169,6 +195,7 @@ export function MembersPage() {
               <th className="py-2 pr-4">Email</th>
               <th className="py-2 pr-4">身分</th>
               <th className="py-2 pr-4">約定每日工時</th>
+              <th className="py-2 pr-4">約定上班時間</th>
               <th className="py-2 pr-4">到職日</th>
               <th className="py-2 pr-4">一例一休檢查</th>
               <th className="py-2 pr-4">必須公告班表</th>
@@ -226,6 +253,15 @@ export function MembersPage() {
                 </td>
                 <td className="py-2 pr-4">
                   <input
+                    type="time"
+                    defaultValue={m.scheduled_start_time.slice(0, 5)}
+                    disabled={savingId === m.id}
+                    onBlur={(e) => updateScheduledStartTime(m.id, e.target.value)}
+                    className="border rounded px-2 py-1"
+                  />
+                </td>
+                <td className="py-2 pr-4">
+                  <input
                     type="date"
                     defaultValue={m.hire_date ?? ''}
                     disabled={savingId === m.id}
@@ -278,9 +314,15 @@ export function MembersPage() {
               </tr>
               {expandedWageId === m.id && (
                 <tr className="border-b bg-gray-50">
-                  <td colSpan={11} className="py-3 px-4">
+                  <td colSpan={12} className="py-3 px-4">
                     <p className="text-xs text-gray-500 mb-2">{effectiveDisplayName(m)} - 約定月薪表</p>
                     <MemberWageTable memberId={m.id} hireDate={m.hire_date} />
+                    <p className="text-xs text-gray-500 mt-4 mb-1">員工線上打卡與工作時間確認條款</p>
+                    {termsAckMap[m.id] ? (
+                      <p className="text-xs text-green-700">已於 {formatDateTime(termsAckMap[m.id])} 詳閱並同意</p>
+                    ) : (
+                      <p className="text-xs text-red-600">尚未詳閱並同意</p>
+                    )}
                   </td>
                 </tr>
               )}

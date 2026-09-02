@@ -1,18 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { formatDateTime } from '@/shared/lib/date'
-import { LEAVE_DURATION_TYPE_LABELS } from '@/shared/constants/roles'
-import { computeLeaveDisplay, formatHours } from './leaveDisplay'
+import { formatHours } from './leaveDisplay'
+import { computeAttendanceStatus } from '@/shared/lib/attendanceStatus'
 import { MONTH_SETTLED_MESSAGE } from '@/shared/lib/settlementLock'
 import type { Enums, Tables, TablesInsert } from '@/shared/types/database'
 
 type LeaveType = Tables<'leave_types'>
 type LeaveRequestRow = Tables<'leave_requests'> & {
   leave_type_name?: string
+  leave_type_pay_coefficient?: number
   reviewer_name?: string
 }
 type DurationType = Enums<'leave_duration_type'>
+type OvertimeResolution = 'unresolved' | 'paid_as_overtime' | 'self_practice'
+
+function formatClockTime(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' })
+}
 
 export function LeaveDetailPanel({
   date,
@@ -23,8 +30,9 @@ export function LeaveDetailPanel({
   canUseManagerOverride,
   monthSettled,
   leaveRequest,
-  rawStatus,
   rawHours,
+  clockInAt,
+  clockOutAt,
   defaultDailyHours,
   leaveTypes,
   onChanged,
@@ -36,13 +44,16 @@ export function LeaveDetailPanel({
   /** whether this date has already settled (i.e. is strictly before today) */
   isPast: boolean
   canDeclare: boolean
-  /** owner-only: this day is abnormal attendance and has no existing leave/override record yet */
+  /** owner-only: this day is abnormal attendance, has both a clock-in and a
+   * clock-out on record, and has no existing leave/override record yet —
+   * 勞基法要求上下班都要有打卡紀錄才能核准，缺一邊就不給按 */
   canUseManagerOverride: boolean
   /** this date's month already has a settlement snapshot — nothing here may be created, reviewed, or deleted */
   monthSettled: boolean
   leaveRequest?: LeaveRequestRow
-  rawStatus: 'normal' | 'abnormal'
   rawHours: number | null
+  clockInAt: string | null
+  clockOutAt: string | null
   defaultDailyHours: number
   leaveTypes: LeaveType[]
   onChanged: () => void
@@ -56,6 +67,81 @@ export function LeaveDetailPanel({
   const [overriding, setOverriding] = useState(false)
   const [acting, setActing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 額外出勤 / 延工事實 for this single day — self-fetched here (rather than
+  // threaded through LeaveCalendar's already-delicate flash-fix state) since
+  // it's only needed while this one day's panel is open
+  const [otReport, setOtReport] = useState<{ requestedHours: number; status: string } | null>(null)
+  const [otResolution, setOtResolution] = useState<OvertimeResolution>('unresolved')
+  const [otLoaded, setOtLoaded] = useState(false)
+  const [resolving, setResolving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setOtLoaded(false)
+    Promise.all([
+      supabase
+        .from('overtime_pre_reports')
+        .select('requested_hours, status')
+        .eq('member_id', memberId)
+        .eq('work_date', date)
+        .maybeSingle(),
+      supabase
+        .from('attendance_overtime_facts')
+        .select('resolution')
+        .eq('member_id', memberId)
+        .eq('work_date', date)
+        .maybeSingle(),
+    ]).then(([{ data: ot }, { data: fact }]) => {
+      if (cancelled) return
+      setOtReport(ot ? { requestedHours: Number(ot.requested_hours), status: ot.status } : null)
+      setOtResolution((fact?.resolution as OvertimeResolution | undefined) ?? 'unresolved')
+      setOtLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [date, memberId])
+
+  const approvedOtCap = otReport?.status === 'approved' ? otReport.requestedHours : 0
+  // no-leave attendance status, purely to drive the overtime-choice gate below —
+  // the mini status table further down computes its own (leave-aware) result
+  const plainStatus = computeAttendanceStatus({
+    rawHours: rawHours ?? 0,
+    contractHours: defaultDailyHours,
+    isAbsence: false,
+    isManagerOverride: false,
+    isFullDayLeave: false,
+    isPartialLeave: false,
+    leaveTypeName: null,
+    leaveHours: null,
+    leaveCoefficient: null,
+    leaveContributedHours: 0,
+    approvedOvertimeHours: approvedOtCap,
+  })
+  const unresolvedOtExcess = plainStatus.unresolvedExcessHours
+  const needsOvertimeChoice =
+    isPast && !leaveRequest && !monthSettled && otLoaded && otResolution === 'unresolved' && unresolvedOtExcess > 1e-9
+
+  const resolveOvertime = async (resolution: 'paid_as_overtime' | 'self_practice') => {
+    if (!profile) return
+    setResolving(true)
+    setError(null)
+    const note = resolution === 'self_practice' ? '下班自主練習，無延工事實' : ''
+    const { error } = await supabase
+      .from('attendance_overtime_facts')
+      .upsert(
+        { member_id: memberId, work_date: date, note, resolution, recorded_by: profile.id },
+        { onConflict: 'member_id,work_date' }
+      )
+    setResolving(false)
+    if (error) {
+      setError(`提交錯誤：${error.message}`)
+      return
+    }
+    setOtResolution(resolution)
+    onChanged()
+  }
 
   const submit = async () => {
     if (!profile || !leaveTypeId) return
@@ -156,55 +242,94 @@ export function LeaveDetailPanel({
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
       {monthSettled && <p className="text-red-600 text-sm mb-2 font-medium">{MONTH_SETTLED_MESSAGE}</p>}
 
+      {isPast ? (
+        (() => {
+          // show what was actually declared regardless of pending/approved/
+          // rejected — a rejected request stays visible (with a "（不同意）"
+          // marker below) until the employee presses 重來 to clear it, at
+          // which point leaveRequest is gone and this reverts to the plain
+          // raw-attendance text on its own
+          const isAbsence = !!leaveRequest?.is_absence
+          const isManagerOverride = !!leaveRequest?.is_manager_override
+          const isRegularLeave = !!leaveRequest && !isAbsence && !isManagerOverride
+          const isFullDayLeave = isRegularLeave && leaveRequest!.duration_type === 'full_day'
+          const isPartialLeave = isRegularLeave && leaveRequest!.duration_type !== 'full_day'
+          const leaveContributedHours = !isRegularLeave
+            ? 0
+            : isFullDayLeave
+              ? defaultDailyHours
+              : Number(leaveRequest!.hours ?? 0)
+          const { color, statusNote, contractLabel } = computeAttendanceStatus({
+            rawHours: rawHours ?? 0,
+            contractHours: defaultDailyHours,
+            isAbsence,
+            isManagerOverride,
+            isFullDayLeave,
+            isPartialLeave,
+            leaveTypeName: leaveRequest?.leave_type_name ?? null,
+            leaveHours: leaveRequest?.hours ?? null,
+            leaveCoefficient: leaveRequest?.leave_type_pay_coefficient ?? null,
+            leaveContributedHours,
+            approvedOvertimeHours: approvedOtCap,
+          })
+          // still awaiting the owner's decision, or already turned down —
+          // flag either on the declared-leave text so it's never mistaken
+          // for a final, settled status
+          const displayNote =
+            leaveRequest?.status === 'pending'
+              ? `${statusNote}（審核中）`
+              : leaveRequest?.status === 'rejected'
+                ? `${statusNote}（不同意）`
+                : statusNote
+          return (
+            <div className="overflow-x-auto mb-3">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="text-left border-b text-gray-500">
+                    <th className="py-1 pr-3">日期</th>
+                    <th className="py-1 pr-3">上班打卡</th>
+                    <th className="py-1 pr-3">下班打卡</th>
+                    <th className="py-1 pr-3">實際停留時數</th>
+                    <th className="py-1 pr-3">契約工時</th>
+                    <th className="py-1 pr-3">請假 / 出勤狀況註記</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="py-1 pr-3 whitespace-nowrap">{date}</td>
+                    <td className="py-1 pr-3 whitespace-nowrap">{formatClockTime(clockInAt)}</td>
+                    <td className="py-1 pr-3 whitespace-nowrap">{formatClockTime(clockOutAt)}</td>
+                    <td className="py-1 pr-3 whitespace-nowrap">{formatHours(rawHours)}小時</td>
+                    <td className="py-1 pr-3 whitespace-nowrap">{contractLabel}</td>
+                    <td
+                      className={`py-1 pr-3 font-medium ${
+                        color === 'green' ? 'text-green-700' : color === 'blue' ? 'text-blue-700' : 'text-red-600'
+                      }`}
+                    >
+                      {displayNote}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )
+        })()
+      ) : (
+        <p className="text-sm text-gray-500 mb-3">＜尚未出勤＞</p>
+      )}
+
+      {isPast && !leaveRequest && unresolvedOtExcess > 1e-9 && otResolution !== 'unresolved' && (
+        <p className="text-xs text-green-700 mb-3">
+          延工 / 自主時間確認：
+          {otResolution === 'paid_as_overtime'
+            ? `已核算延工費${formatHours(unresolvedOtExcess)}小時`
+            : '員工簽認：下班自主練習，無延工事實'}
+        </p>
+      )}
+
       {leaveRequest ? (
         <div className="space-y-2 text-sm">
-          <p className="text-gray-600">
-            原：正常班{' '}
-            {!isPast ? (
-              <span className="text-gray-500">＜尚未出勤＞</span>
-            ) : rawStatus === 'abnormal' ? (
-              <span className="text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞</span>
-            ) : (
-              <span className="text-green-700">＜出勤正常 {formatHours(rawHours)} 小時＞</span>
-            )}
-          </p>
-          <p>
-            申報：
-            {leaveRequest.is_absence ? (
-              <span className="text-red-600 font-medium">曠職（月結時系統自動判定）</span>
-            ) : leaveRequest.is_manager_override
-              ? '主管同意提早下班'
-              : `${leaveRequest.leave_type_name ?? '未知假別'} ${
-                  leaveRequest.duration_type === 'full_day'
-                    ? LEAVE_DURATION_TYPE_LABELS.full_day
-                    : `${leaveRequest.hours} 小時`
-                }`}
-          </p>
-          {leaveRequest.status === 'approved' &&
-            (() => {
-              const display = computeLeaveDisplay({
-                isPast,
-                rawStatus,
-                rawHours,
-                defaultDailyHours,
-                leaveRequest,
-              })
-              return (
-                <p className="text-xs text-gray-500">
-                  顯示為：
-                  <span className="font-medium">
-                    {display.primaryLabel}
-                    {display.secondaryLabel && (
-                      <>
-                        <br />
-                        {display.secondaryLabel}
-                      </>
-                    )}
-                  </span>
-                </p>
-              )
-            })()}
-          {isPast && !leaveRequest.is_manager_override && leaveRequest.duration_type === 'partial' && (
+          {isPast && leaveRequest.status === 'approved' && !leaveRequest.is_manager_override && leaveRequest.duration_type === 'partial' && (
             <p className="text-xs text-gray-500">
               原出勤時數 {formatHours(rawHours)} + 請假 {leaveRequest.hours} 小時 ={' '}
               {(Number(rawHours ?? 0) + Number(leaveRequest.hours ?? 0)).toFixed(2)} 小時，約定工時{' '}
@@ -246,19 +371,49 @@ export function LeaveDetailPanel({
                 disabled={acting}
                 className="text-red-600 text-xs underline disabled:opacity-50 ml-auto"
               >
-                刪除
+                {leaveRequest.status === 'rejected' ? '重來' : '刪除'}
               </button>
             )}
           </div>
         </div>
+      ) : needsOvertimeChoice ? (
+        <div>
+          <p className="text-xs text-gray-500 mb-2">
+            出勤已超出{otReport ? '額外出勤核准後的' : ''}緩衝上限，請先確認今日超額時間的性質，才能繼續請假申報：
+          </p>
+          {otReport && (
+            <p className="text-xs text-gray-600 mb-2">
+              今日已{otReport.status === 'approved' ? '核准' : otReport.status === 'rejected' ? '被駁回' : '送出待審'}
+              額外出勤 {formatHours(otReport.requestedHours)} 小時
+              {otReport.status === 'approved' ? '（已計入正常給薪上限）' : '（尚未核准，不計入正常給薪上限）'}
+              ，仍有 {formatHours(unresolvedOtExcess)} 小時需要確認。
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {otReport && isOwner && (
+              <button
+                onClick={() => resolveOvertime('paid_as_overtime')}
+                disabled={resolving}
+                className="bg-amber-600 text-white rounded px-4 py-1.5 text-sm disabled:opacity-50"
+              >
+                方案A：核算延工費{formatHours(unresolvedOtExcess)}小時
+              </button>
+            )}
+            <button
+              onClick={() => resolveOvertime('self_practice')}
+              disabled={resolving}
+              className="bg-gray-700 text-white rounded px-4 py-1.5 text-sm disabled:opacity-50"
+            >
+              {otReport
+                ? '方案B：自主練習，無延工事實'
+                : resolving
+                  ? '處理中…'
+                  : '今日無額外出勤之事實，我同意剩餘時間為自主練習'}
+            </button>
+          </div>
+        </div>
       ) : canDeclare || canUseManagerOverride ? (
         <div className="space-y-4">
-          {!isPast ? (
-            <p className="text-sm text-gray-500">＜尚未出勤＞</p>
-          ) : (
-            <p className="text-sm text-red-600">＜出勤異常 {formatHours(rawHours)} 小時＞</p>
-          )}
-
           {canDeclare && (
             <div>
               <p className="text-xs text-gray-500 mb-2">正常流程：</p>
@@ -315,6 +470,10 @@ export function LeaveDetailPanel({
           {canUseManagerOverride && (
             <div className={canDeclare ? 'pt-3 border-t' : undefined}>
               <p className="text-xs text-gray-500 mb-2">特殊流程：</p>
+              <p className="text-xs text-gray-600 mb-2">
+                今日上班 {formatClockTime(clockInAt)}，下班 {formatClockTime(clockOutAt)}，共{' '}
+                {formatHours(rawHours)} 小時，請確認無誤後再核准。
+              </p>
               <button
                 onClick={submitOverride}
                 disabled={overriding}

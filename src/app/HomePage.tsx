@@ -34,9 +34,16 @@ interface PendingLeaveItem {
   defaultDailyHours: number
 }
 
+interface PendingOvertimeItem {
+  id: string
+  member_name: string
+  requested_hours: number
+}
+
 type ReviewBox =
   | { type: 'backfill'; items: PendingBackfillItem[] }
   | { type: 'leave'; items: PendingLeaveItem[] }
+  | { type: 'overtime'; items: PendingOvertimeItem[] }
 
 function PendingBackfillReviewBox({
   items,
@@ -165,6 +172,57 @@ function PendingLeaveReviewBox({ items, onChanged }: { items: PendingLeaveItem[]
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function PendingOvertimeReviewBox({ items, onChanged }: { items: PendingOvertimeItem[]; onChanged: () => void }) {
+  const [actingId, setActingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const review = async (id: string, status: 'approved' | 'rejected') => {
+    setActingId(id)
+    setError(null)
+    const { error } = await supabase.from('overtime_pre_reports').update({ status }).eq('id', id)
+    setActingId(null)
+    if (error) {
+      setError(`提交錯誤：${error.message}`)
+      return
+    }
+    onChanged()
+  }
+
+  return (
+    <div className="ml-4 mt-1 mb-2 border rounded bg-white overflow-x-auto">
+      {error && <p className="text-red-600 text-xs px-2 pt-1">{error}</p>}
+      <table className="w-full text-xs border-collapse">
+        <tbody>
+          {items.map((it) => (
+            <tr key={it.id} className="border-b last:border-b-0">
+              <td className="py-1 px-2 whitespace-nowrap">{it.member_name}</td>
+              <td className="py-1 px-2 whitespace-nowrap">上限 {it.requested_hours} 小時</td>
+              <td className="py-1 px-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => review(it.id, 'approved')}
+                    disabled={actingId === it.id}
+                    className="text-xs bg-green-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
+                  >
+                    同意
+                  </button>
+                  <button
+                    onClick={() => review(it.id, 'rejected')}
+                    disabled={actingId === it.id}
+                    className="text-xs bg-red-600 text-white rounded px-2 py-0.5 disabled:opacity-50"
+                  >
+                    不同意
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -369,6 +427,41 @@ export function HomePage() {
         }
       }
 
+      // 4b. owner-only: today's pending 額外出勤申請 (only ever today, per the
+      // feature's own "only report today" rule) — must be caught same-day
+      if (isOwner) {
+        const { data: pendingOvertime } = await supabase
+          .from('overtime_pre_reports')
+          .select('id, member_id, requested_hours')
+          .eq('status', 'pending')
+          .eq('work_date', today)
+
+        if (pendingOvertime && pendingOvertime.length > 0) {
+          const memberIds = Array.from(new Set(pendingOvertime.map((r) => r.member_id)))
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('id, display_name, preferred_display_name')
+            .in('id', memberIds)
+          const nameMap = Object.fromEntries((profs ?? []).map((p) => [p.id, effectiveDisplayName(p)]))
+
+          const overtimeItems: PendingOvertimeItem[] = pendingOvertime.map((r) => ({
+            id: r.id,
+            member_name: nameMap[r.member_id] ?? '未知成員',
+            requested_hours: r.requested_hours,
+          }))
+
+          const now = Date.now()
+          const id = `overtime-pending-${today}`
+          items.push({
+            id,
+            text: `你有[${overtimeItems.length}]筆今日待審核的額外出勤申請，請於今日內審核（逾期視為不核准）`,
+            colorClass: 'text-red-600 font-medium',
+            sortKey: now,
+          })
+          boxes[id] = { type: 'overtime', items: overtimeItems }
+        }
+      }
+
       // 5. owner-only: month-start reminder to produce last month's settlement snapshot
       // for members flagged 必須計算月結, persists until that snapshot exists
       if (isOwner && inMonthStartWindow) {
@@ -483,6 +576,7 @@ export function HomePage() {
                   <PendingBackfillReviewBox items={box.items} onChanged={build} />
                 )}
                 {box?.type === 'leave' && <PendingLeaveReviewBox items={box.items} onChanged={build} />}
+                {box?.type === 'overtime' && <PendingOvertimeReviewBox items={box.items} onChanged={build} />}
               </li>
             )
           })}
