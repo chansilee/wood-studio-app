@@ -21,6 +21,7 @@ import { LeavePage } from '@/modules/leave/LeavePage'
 import { MonthlySettlementPage } from '@/modules/settlement/MonthlySettlementPage'
 import { JournalPage } from '@/modules/journal/JournalPage'
 import { InventoryOverviewPage } from '@/modules/inventory/InventoryOverviewPage'
+import { WarehousePage } from '@/modules/warehouse/WarehousePage'
 import { ProductsPage } from '@/modules/products/ProductsPage'
 import { ProductDetailPage } from '@/modules/products/ProductDetailPage'
 import { ProcessTemplatesPage } from '@/modules/products/ProcessTemplatesPage'
@@ -136,6 +137,14 @@ export default function App() {
               element={
                 <RequireRole allow={['owner', 'staff', 'apprentice']}>
                   <InventoryOverviewPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/warehouse"
+              element={
+                <RequireRole allow={['owner']}>
+                  <WarehousePage />
                 </RequireRole>
               }
             />

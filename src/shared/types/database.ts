@@ -423,6 +423,282 @@ export type Database = {
           },
         ]
       }
+      inventory_diagrams: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_diagrams_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_diagrams_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_diagram_layers: {
+        Row: {
+          created_at: string
+          depth: number
+          diagram_id: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          depth: number
+          diagram_id: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          depth?: number
+          diagram_id?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_diagram_layers_diagram_id_fkey"
+            columns: ["diagram_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_diagrams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_diagram_nodes: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          layer_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          layer_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          layer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_diagram_nodes_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_diagram_layers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_diagram_edges: {
+        Row: {
+          created_at: string
+          diagram_id: string
+          from_node_id: string
+          id: string
+          to_node_id: string
+        }
+        Insert: {
+          created_at?: string
+          diagram_id: string
+          from_node_id: string
+          id?: string
+          to_node_id: string
+        }
+        Update: {
+          created_at?: string
+          diagram_id?: string
+          from_node_id?: string
+          id?: string
+          to_node_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_diagram_edges_diagram_id_fkey"
+            columns: ["diagram_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_diagrams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_diagram_edges_from_node_id_fkey"
+            columns: ["from_node_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_diagram_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_diagram_edges_to_node_id_fkey"
+            columns: ["to_node_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_diagram_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_diagram_paths: {
+        Row: {
+          created_at: string
+          diagram_id: string
+          id: string
+          node_ids: string[]
+        }
+        Insert: {
+          created_at?: string
+          diagram_id: string
+          id?: string
+          node_ids: string[]
+        }
+        Update: {
+          created_at?: string
+          diagram_id?: string
+          id?: string
+          node_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_diagram_paths_diagram_id_fkey"
+            columns: ["diagram_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_diagrams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_inventory_path_settings: {
+        Row: {
+          enabled: boolean
+          id: string
+          is_default: boolean
+          path_id: string
+          product_tag_node_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          id?: string
+          is_default?: boolean
+          path_id: string
+          product_tag_node_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          id?: string
+          is_default?: boolean
+          path_id?: string
+          product_tag_node_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_inventory_path_settings_path_id_fkey"
+            columns: ["path_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_diagram_paths"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_inventory_path_settings_product_tag_node_id_fkey"
+            columns: ["product_tag_node_id"]
+            isOneToOne: false
+            referencedRelation: "process_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_inventory_path_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_tag_layer_sync: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          layer_id: string
+          product_tag_node_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          layer_id: string
+          product_tag_node_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          layer_id?: string
+          product_tag_node_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_tag_layer_sync_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_tag_layer_sync_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_diagram_layers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_tag_layer_sync_product_tag_node_id_fkey"
+            columns: ["product_tag_node_id"]
+            isOneToOne: false
+            referencedRelation: "process_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       journal_preferences: {
         Row: {
           action_first: boolean
@@ -1618,6 +1894,15 @@ export type Database = {
       preference_editable_year_month: { Args: never; Returns: string }
       expire_stale_overtime_reports: { Args: never; Returns: undefined }
       resolve_matured_wait_logs: { Args: never; Returns: undefined }
+      recompute_diagram_paths: { Args: { p_diagram_id: string }; Returns: undefined }
+      delete_inventory_diagram_edge: { Args: { p_edge_id: string }; Returns: undefined }
+      delete_inventory_diagram_node: { Args: { p_node_id: string }; Returns: undefined }
+      delete_inventory_diagram_layer: { Args: { p_layer_id: string }; Returns: undefined }
+      add_inventory_diagram_edge: {
+        Args: { p_diagram_id: string; p_from_node_id: string; p_to_node_id: string }
+        Returns: undefined
+      }
+      delete_inventory_diagram: { Args: { p_diagram_id: string }; Returns: undefined }
     }
     Enums: {
       attendance_approval_status: "pending" | "approved" | "rejected"

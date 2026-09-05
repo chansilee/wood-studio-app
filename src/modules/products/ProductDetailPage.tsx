@@ -4,6 +4,7 @@ import { supabase } from '@/shared/lib/supabase'
 import { useAuth } from '@/shared/hooks/useAuth'
 import { ProcessFlowEditor } from './ProcessFlowEditor'
 import { ProductPriceTable } from './ProductPriceTable'
+import { SkuSubSkuBadge } from './SkuSubSkuBrowser'
 import { formatDateTime } from '@/shared/lib/date'
 import type { Tables } from '@/shared/types/database'
 
@@ -351,13 +352,18 @@ export function ProductDetailPage() {
         <h1 className="text-xl font-semibold mb-1">{product.name}</h1>
         <p className="text-sm text-gray-500 mb-1">目前價格：{currentPrice !== null ? `$${currentPrice}` : '尚未設定'}</p>
         {skus.length > 0 && (
-          <div className="flex items-center flex-wrap gap-1.5 mt-1">
-            <span className="text-xs text-gray-500">SKUs：</span>
-            {skus.map((s) => (
-              <span key={s} className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
-                {s}
-              </span>
-            ))}
+          <div className="flex items-start flex-wrap gap-1.5 mt-1">
+            <span className="text-xs text-gray-500 leading-6">SKUs：</span>
+            {skus.map((s) => {
+              const tagId = balances.find((b) => b.label === s)?.tag_id
+              return tagId ? (
+                <SkuSubSkuBadge key={s} tagId={tagId} label={s} />
+              ) : (
+                <span key={s} className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
+                  {s}
+                </span>
+              )
+            })}
           </div>
         )}
       </div>
